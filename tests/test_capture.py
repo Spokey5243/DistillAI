@@ -1,5 +1,6 @@
 """Run: python tests/test_capture.py (Windows, no dependencies)."""
 import json
+import msvcrt
 import os
 from pathlib import Path
 import subprocess
@@ -14,14 +15,14 @@ def main():
     with tempfile.TemporaryDirectory() as directory:
         env = {**os.environ, "DISTILLAI_HOME": directory}
 
-        def invoke(payload, platform=None):
+        def invoke(payload, platform=None, timeout=15):
             raw = json.dumps(payload, ensure_ascii=False) if isinstance(payload, dict) else payload
             args = [sys.executable, str(SCRIPT)]
             if platform:
                 args += ["--platform", platform]
             result = subprocess.run(
                 args, input=raw.encode("utf-8"),
-                capture_output=True, env=env, timeout=15,
+                capture_output=True, env=env, timeout=timeout,
             )
             assert result.returncode == 0, result.stderr.decode("utf-8", errors="replace")
             assert json.loads(result.stdout) == {}, result.stdout
@@ -73,7 +74,21 @@ def main():
         assert len(path.read_text(encoding="utf-8").splitlines()) == 22
         assert len((Path(directory) / "logs/capture-errors.log").read_text().splitlines()) == 5
         assert not (Path(directory) / "data/escape.jsonl").exists()
-    print("PASS: UTF-8, payload, append, session isolation, concurrency, invalid input, fail-open, platform override")
+        # A busy session must fail open and report the error before the 5s Hook deadline.
+        busy_path = path.parent / "busy-session.jsonl"
+        with busy_path.open("a+b") as stream:
+            msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+            try:
+                invoke({**prompt, "session_id": "busy-session"}, timeout=4)
+                assert busy_path.stat().st_size == 0
+                errors = (Path(directory) / "logs/capture-errors.log").read_text().splitlines()
+                assert len(errors) == 6
+                error = json.loads(errors[-1])
+                assert error["event"] == prompt["hook_event_name"] and error["error"]
+            finally:
+                stream.seek(0)
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+    print("PASS: UTF-8, payload, append, session isolation, concurrency, invalid input, fail-open, platform override, busy-lock deadline")
 
 
 if __name__ == "__main__":

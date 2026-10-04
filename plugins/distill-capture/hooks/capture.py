@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import sys
+import time
 import uuid
 
 
@@ -14,7 +15,16 @@ def append_locked(path, text):
     with path.open("a+b") as stream:
         stream.seek(0)
         # ponytail: one Windows byte-range lock per file; use SQLite when queries are needed.
-        msvcrt.locking(stream.fileno(), msvcrt.LK_LOCK, 1)
+        # ponytail: at most 2s per lock within the 5s Hook timeout; queue if bursts need lossless capture.
+        deadline = time.monotonic() + 2
+        while True:
+            try:
+                msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+                break
+            except OSError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.05)
         try:
             stream.seek(0, os.SEEK_END)
             stream.write(text.encode("utf-8"))

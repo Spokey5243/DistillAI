@@ -74,6 +74,7 @@ Get-ChildItem "$env:USERPROFILE\.distallAI\data\sessions" -Filter *.jsonl |
 - 面向本机 Windows 用户，采集启用后的会话；不会导入安装前的历史。
 - Stop 只有最近助手消息，不保证保存中间 commentary、附件、工具结果或完整历史。
 - 文件锁防止并发记录混写；采集时间/文件顺序不代表源事件严格时序。
+- 单次文件锁最多等待 2 秒；长时间占锁时记录错误并放行对话，该事件可能未保存。
 - event_id 标识每次写入，不实现源事件去重；本原型不处理崩溃后残缺行恢复。
 - `DISTILLAI_HOME` 可覆盖存储根目录，用于测试。默认仍是 `.distallAI`。
 
