@@ -22,7 +22,7 @@ for event, message in [("UserPromptSubmit", {"prompt": "DISTILL-DEMO：中文测
     )
     if result.returncode or result.stderr or result.stdout.strip() != b"{}":
         raise RuntimeError(f"Hook failed: {result.stdout!r} {result.stderr!r}")
-home = Path(os.environ.get("DISTILLAI_HOME", str(Path.home() / ".distallAI")))
+home = Path(os.environ.get("DISTILLAI_HOME") or Path.home() / ".distallAI")
 path = home / "data/sessions" / f"{session}.jsonl"
 rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 assert len(rows) == 2 and rows[0]["payload"]["prompt"].endswith("\n第二行")
