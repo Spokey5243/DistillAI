@@ -95,6 +95,8 @@ Get-ChildItem "$env:USERPROFILE\.distallAI\data\sessions" -Filter *.jsonl |
 
 GitHub Actions 的 `CI / Windows tests` 在 PR、默认分支 Push 和手动触发时执行同一套 Windows + Python 3.13 检查。普通分支 Push 的 job 跳过，不算 PR 通过。Actions 只有只读 Contents 权限，不需要 GitHub / 模型 secret，也不会自动创建 Issue / PR 或调用模型。
 
+允许先发布开发规范、后发布插件：Push 检查始终执行；插件与采集测试均未提交时，CI 明确输出采集行为未验证。提交 `tests/test_capture.py` 后自动运行采集测试并传播失败；提交采集插件却遗漏测试时 CI 失败。CI 只验证已提交版本，不读取本机未跟踪文件。
+
 完整本地检查：
 
 ```powershell
