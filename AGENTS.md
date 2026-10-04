@@ -55,8 +55,8 @@
 
 ## Git、验证与文档同步
 
-- 不直接在默认分支开发或 Push；新分支使用 `codex/<Issue编号>-<slug>`，Direct 无 Issue 时用 `codex/<slug>`。恢复已有任务时保留分支名。
-- 本次迁移仓库尚无提交，用户可按设置指南完成一次初始提交和默认分支首次 Push；此例外只用于仓库初始化。
+- 不直接在默认分支开发或 Push；有关联 Issue 的新分支使用 `codex/<Issue编号>-<slug>`，无关联 Issue 时用 `codex/<slug>` 描述任务。是否需要 Issue 按工作流分类执行。恢复已有任务时保留分支名。
+- GitHub 仓库初始化已完成；后续任务遵循任务分支、验证和合并规则。
 - Agent 可以在任务分支创建任务范围内的本地 Commit；提交前核对 status、暂存区、禁止内容和最新验证证据，显式指定暂存路径。
 - 不用 stash、reset、强制 checkout / rebase 清除用户修改；审查不切换开发工作区。
 - Push 前 fetch 实际默认分支并验证祖先关系；落后时询问用户是否仍推送，不自动 merge / rebase。一次性放行用 `.codex/hooks/pre_push_guard.py authorize`，绑定 HEAD、默认分支、远端 SHA 和 origin。
@@ -74,20 +74,6 @@
 - 使用 Codex Desktop 验证集成，不安装或适配旧 Codex CLI；GitHub CLI `gh` 是独立的 GitHub 工具。
 - Graphify 仅在用户明确要求 `/graphify` 时运行。
 
-# 调研文档路由
+## Spec 入口
 
-先读 [调研综述](docs/research/README.md)，了解已调研对象、当前轮次与状态。快速复盘时读项目 README 的各轮简短结论；核对依据时进入对应的 `round-N.md`。
-
-| 调研对象 | 项目入口 |
-| --- | --- |
-| Graphiti | [Graphiti 调研](docs/research/graphiti/README.md) |
-| Mem0 | [Mem0 调研](docs/research/mem0/README.md) |
-| Letta | [Letta 调研](docs/research/letta/README.md) |
-| Honcho | [Honcho 调研](docs/research/honcho/README.md) |
-| Eigma | [Eigma 调研](docs/research/eigma/README.md) |
-| OpenMAIC | [OpenMAIC 调研](docs/research/openmaic/README.md) |
-| LLM Wiki | [LLM Wiki 调研](docs/research/llm-wiki/README.md) |
-
-DistillAI 目标、候选流程与待决设计见 [MVP 讨论](docs/mvp/discussion.md)。
-
-新增调研轮次时，更新涉及项目的 README 与详细记录，并同步调研综述中的范围、轮次和状态。
+版本与分支 Spec 的目录规则和模板见 [Spec 工作流](docs/spec/README.md)。
