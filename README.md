@@ -25,3 +25,7 @@ python .codex/hooks/test_pre_push_guard.py
 ```
 
 迁移与验证记录见 [迁移计划](docs/development/github-sdlc-plan.md)，Anthropic 文章的采用与暂缓项见 [AI-native SDLC 适配](docs/development/ai-native-sdlc.md)。
+
+## Hook 采集可行性验证
+
+已完成的验证记录、插件、演示脚本与测试见 [采集验证任务](docs/spec/v0.1.0/capture-validation/README.md)，运行和历史验证说明见 [使用说明](docs/spec/v0.1.0/capture-validation/usage.md)。这些资产后续可按产品设计需要移除。

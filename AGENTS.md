@@ -77,3 +77,5 @@
 ## Spec 入口
 
 版本与分支 Spec 的目录规则和模板见 [Spec 工作流](docs/spec/README.md)。
+
+采集验证计划与相关资产见 [Hook 采集可行性验证](docs/spec/v0.1.0/capture-validation/README.md)。
