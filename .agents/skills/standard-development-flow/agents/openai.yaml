@@ -1,0 +1,6 @@
+interface:
+  display_name: "Standard Development Flow"
+  short_description: "Advance repository work to its next approval gate"
+  default_prompt: "Use $standard-development-flow status to inspect the current development stage."
+policy:
+  allow_implicit_invocation: true

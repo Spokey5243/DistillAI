@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.artifacts/
+.env
+.env.*
+!.env.example
+.distallAI/
+node_modules/
+dist/
+*.log

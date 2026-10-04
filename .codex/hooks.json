@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/pre_push_guard.py\"",
+            "commandWindows": "python \"$(git rev-parse --show-toplevel)/.codex/hooks/pre_push_guard.py\"",
+            "timeout": 120,
+            "statusMessage": "Checking Push target and default branch"
+          }
+        ]
+      }
+    ]
+  }
+}
