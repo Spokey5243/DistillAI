@@ -45,7 +45,7 @@ def resolve_platform(argv):
 
 
 def main():
-    home = Path(os.environ.get("DISTILLAI_HOME", str(Path.home() / ".distallAI")))
+    home = Path(os.environ.get("DISTILLAI_HOME") or Path.home() / ".distallAI")
     platform = resolve_platform(sys.argv)
     event = "unknown"
     try:

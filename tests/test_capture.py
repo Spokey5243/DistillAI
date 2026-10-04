@@ -93,6 +93,21 @@ def main():
             finally:
                 stream.seek(0)
                 msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+        # An empty override must use the user data directory, never the session cwd.
+        profile = Path(directory) / "empty-home-profile"
+        project = Path(directory) / "empty-home-project"
+        profile.mkdir()
+        project.mkdir()
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT)],
+            input=json.dumps({**prompt, "session_id": "empty-home"}).encode("utf-8"),
+            capture_output=True, cwd=project,
+            env={**env, "DISTILLAI_HOME": "", "USERPROFILE": str(profile)}, timeout=4,
+        )
+        assert result.returncode == 0 and json.loads(result.stdout) == {}
+        assert not (project / "data").exists()
+        saved = profile / ".distallAI/data/sessions/empty-home.jsonl"
+        assert json.loads(saved.read_text(encoding="utf-8"))["payload"]["prompt"] == prompt["prompt"]
     print("PASS: UTF-8, payload, append, session isolation, concurrency, invalid input, fail-open, platform override, busy-lock deadline")
 
 

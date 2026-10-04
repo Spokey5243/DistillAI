@@ -76,6 +76,6 @@ Get-ChildItem "$env:USERPROFILE\.distallAI\data\sessions" -Filter *.jsonl |
 - 文件锁防止并发记录混写；采集时间/文件顺序不代表源事件严格时序。
 - 单次文件锁最多等待 2 秒；长时间占锁时记录错误并放行对话，该事件可能未保存。
 - event_id 标识每次写入，不实现源事件去重；本原型不处理崩溃后残缺行恢复。
-- `DISTILLAI_HOME` 可覆盖存储根目录，用于测试。默认仍是 `.distallAI`。
+- 非空 `DISTILLAI_HOME` 可覆盖存储根目录，用于测试；未设置或空值时使用用户目录下的 `.distallAI`。
 
 官方接口依据：[Hooks](https://learn.chatgpt.com/docs/hooks)。
