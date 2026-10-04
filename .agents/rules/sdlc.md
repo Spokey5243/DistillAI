@@ -33,9 +33,10 @@ Medium、Intent、Exploratory 必须先有 Issue，并由用户确认 Agent 报�
 
 ## Spec 位置与元信息
 
-Spec 存放在 `docs/specs/<Issue编号>-<简短说明>/`，结构和模板见 `docs/specs/README.md` 与 `docs/specs/templates/`。统一元信息为：
+Spec 存放在 `docs/spec/<版本号>/<分支名>/`，结构和模板见 `docs/spec/README.md` 与 `docs/spec/templates/`。版本目录汇总分支入口，每个分支独立保存自己的 Spec 文档。目录中的分支名去掉 `codex/` 前缀：有关联 Issue 时使用 `<Issue编号>-<slug>`，无关联 Issue 时使用 `<slug>`；不补造 Issue 编号。统一元信息为：
 
 ```yaml
+version: v0.1.0
 issue: 123
 branch: codex/123-example
 workflow: medium | intent | exploratory
@@ -43,7 +44,7 @@ status: draft | approved | implemented | superseded
 decision_mode: agent-closed | user-approved
 ```
 
-Design 额外使用 `material_revision: 0`。Direct 不创建 Spec。
+`version` 与所在版本目录一致；`branch` 使用完整分支名，并与分支目录对应；`issue` 使用实际编号，无关联 Issue 时为 `null`。是否需要 Issue / Spec 仍按上述工作流分类执行。Design 额外使用 `material_revision: 0`。Direct 不创建 Spec。流程引入前的历史文档保留原记录，不补造 Issue 或批准状态。
 
 ## Discussion 连续性
 
