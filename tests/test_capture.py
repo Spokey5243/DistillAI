@@ -69,10 +69,15 @@ def main():
         assert len(rows) == 22 and len({row["event_id"] for row in rows}) == 22
         assert {r["payload"].get("prompt") for r in rows[2:]} == {f"并发-{i}" for i in range(20)}
         for invalid in ["{broken", [], {**prompt, "session_id": "../escape"},
-                        {**prompt, "session_id": "CON"}, {**prompt, "prompt": 42}]:
+                        {**prompt, "session_id": "CON"}, {**prompt, "prompt": 42},
+                        {**prompt, "hook_event_name": "PRIVATE-EVENT-CONTENT"},
+                        {**prompt, "hook_event_name": {"body": "PRIVATE-EVENT-CONTENT"}}]:
             invoke(invalid if isinstance(invalid, (dict, str)) else json.dumps(invalid))
         assert len(path.read_text(encoding="utf-8").splitlines()) == 22
-        assert len((Path(directory) / "logs/capture-errors.log").read_text().splitlines()) == 5
+        error_text = (Path(directory) / "logs/capture-errors.log").read_text()
+        assert len(error_text.splitlines()) == 7
+        assert "PRIVATE-EVENT-CONTENT" not in error_text
+        assert all(json.loads(line)["event"] == "unknown" for line in error_text.splitlines()[-2:])
         assert not (Path(directory) / "data/escape.jsonl").exists()
         # A busy session must fail open and report the error before the 5s Hook deadline.
         busy_path = path.parent / "busy-session.jsonl"
@@ -82,7 +87,7 @@ def main():
                 invoke({**prompt, "session_id": "busy-session"}, timeout=4)
                 assert busy_path.stat().st_size == 0
                 errors = (Path(directory) / "logs/capture-errors.log").read_text().splitlines()
-                assert len(errors) == 6
+                assert len(errors) == 8
                 error = json.loads(errors[-1])
                 assert error["event"] == prompt["hook_event_name"] and error["error"]
             finally:

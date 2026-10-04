@@ -57,10 +57,11 @@ def main():
                 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}", session)
                 or re.fullmatch(r"CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9]", session, re.I)):
             raise ValueError("Invalid session_id")
-        event = payload.get("hook_event_name")
+        requested_event = payload.get("hook_event_name")
         roles = {"UserPromptSubmit": "user", "Stop": "assistant"}
-        if event not in roles:
+        if not isinstance(requested_event, str) or requested_event not in roles:
             raise ValueError("Unsupported hook event")
+        event = requested_event
         content_key = "prompt" if event == "UserPromptSubmit" else "last_assistant_message"
         content = payload.get(content_key)
         if not isinstance(content, str) and not (event == "Stop" and content is None):
