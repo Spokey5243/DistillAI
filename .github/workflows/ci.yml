@@ -45,6 +45,14 @@ jobs:
           python --version
           git --version
       - name: Capture behavior
-        run: python tests/test_capture.py
+        run: |
+          if (Test-Path 'tests/test_capture.py' -PathType Leaf) {
+            python tests/test_capture.py
+            exit $LASTEXITCODE
+          }
+          if (Test-Path 'plugins/distill-capture') {
+            throw 'Capture plugin is published without tests/test_capture.py.'
+          }
+          Write-Output '::notice::Capture plugin and tests are not published; capture behavior was not verified.'
       - name: Push guard behavior
         run: python .codex/hooks/test_pre_push_guard.py
