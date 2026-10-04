@@ -1,0 +1,15 @@
+{
+  "name": "distill-capture",
+  "version": "0.1.0",
+  "description": "Capture Codex prompts and final responses locally for Distill AI.",
+  "author": {"name": "Local developer"},
+  "interface": {
+    "displayName": "Distill Capture",
+    "shortDescription": "Save conversation events locally on Windows.",
+    "longDescription": "Capture UserPromptSubmit and Stop payloads in ~/.distallAI/data/sessions.",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "Explain where Distill Capture saves conversation events."
+  }
+}
