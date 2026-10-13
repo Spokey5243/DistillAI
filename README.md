@@ -29,3 +29,7 @@ python .codex/hooks/test_pre_push_guard.py
 ## Hook 采集可行性验证
 
 已完成的验证记录、插件、演示脚本与测试见 [采集验证任务](docs/spec/v0.1.0/capture-validation/README.md)，运行和历史验证说明见 [使用说明](docs/spec/v0.1.0/capture-validation/usage.md)。这些资产后续可按产品设计需要移除。
+
+## 产品调研、设计与实施计划
+
+[领域词汇表](docs/CONTEXT.md)、[调研综述](docs/research/README.md)和[初版设计与开发](docs/spec/v0.1.0/4-initial-development/README.md)按主题归档维护。八模块的当前维护入口为 [统一 Design](docs/spec/v0.1.0/4-initial-development/design.md)，旧模块文件保留为批准历史快照；[总 Plan](docs/spec/v0.1.0/4-initial-development/plan.md)串起八份模块实施草案与验收。本地提交不改变文档批准状态，目前尚无产品实施。

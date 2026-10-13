@@ -1,0 +1,63 @@
+# 初版设计与开发
+
+关联 [Issue #4](https://github.com/Spokey5243/DistillAI/issues/4)，分支 `codex/4-initial-development`，采用 Exploratory 流程。
+
+2026-10-10，用户要求将八模块 Design 合并为一份，并明确 Design 与 Discussion 冲突时以 Design 为主。当前设计维护入口为 [统一 Design](design.md)。M01–M08 合并前版本均已批准，原文保留为来源快照；合并新增的交接、技术提案与 Prompt 文本保持 `draft`，不撤销已有批准。
+
+2026-10-12，用户在框架比较后最终选择 Hermes SDK，即官方 Python Library / `AIAgent` API，作为后台 Agent 执行入口；选择依据新增后续采集 trajectory、蒸馏闭源模型能力与小模型 RLVR 的方向。同日 grill 第一轮确认控制层、Hook 和 MCP 均使用 Python，Hermes 任务在独立执行子进程调用 `AIAgent` API；环境是否拆分按依赖兼容验证决定。修订期间判断标记、依赖变化触发准备及程序评分工具往返也已确认。其余配套技术、交接、具体训练方案及搜索后端仍待收敛。沙箱只限制写入，读取不限制；API key 由用户填写。[三框架源码比较](../../../research/runtime/round-4.md)保留为历史依据，最终决定见 [统一 Design T05](design.md#technical-selection)。九组、十二段 Prompt 仍为审阅稿，工具映射随 Hermes 接入适配。2026-10-13，按用户要求创建总 Plan 与八份模块 Plan 草案，并授权按主题创建本地提交；尚无产品实施，文档批准状态不变。
+
+## 阅读入口
+
+grill 第二轮已确认：子图每 3 次有效更新刷新，外扩每 60 分钟触发、每批最多 10 个已有知识点，均为可配置初始值；旧版 M04 / M05 分析在运行前及提交前核对 episode 修订版本，被替代的输入不再发布当前结果，保留历史并接续最新修订。其余交接、配套技术及 Prompt 整体继续审阅。
+
+grill 第三轮已确认：最后一次允许的模型生成可完成、校验并提交，仍需超额生成才预算失败；明确 ID / 名称查询由程序返回，自然语言 MCP 查询通过 Hermes `AIAgent` 的只读任务执行，先子图 / 上下文、必要时全图。查询预算与历史复用 M01；P06 增加 query 模式，Prompt 组数不变。
+
+grill 第四轮已确认：当前轮注入最高优先、MCP 只读检索其次、普通后台最后；查询复用普通名额、不抢占运行中任务，MCP 等待结果，客户端取消或平台超时停止关联查询，错误不冒充无匹配。九项审查决定均已同步，统一 Design / Prompt 整体仍待批准；依赖与环境、写隔离、文件句柄和 Desktop 行为仍须后续验证，搜索后端按用户要求延后。
+
+- [统一 Design](design.md)：整合核对、共用契约、八模块行为、交接、技术选择、Prompt 与验证。
+- [总 Plan](plan.md)：跨模块顺序、能力验证门禁、九项 grill 决定覆盖和完整初版验收；模块任务见下表。
+- [冲突核对](design.md#integration-review)：已修正的旧说法和仍需确认的交接缺口。
+- [技术选择](design.md#technical-selection)与 [Prompt 草案](design.md#prompt-finalization)：收尾审阅入口。
+- [项目结构与启动组织](design.md#project-structure)：Hermes / DistillAI 并列源码、Python 产品目录参考、启动职责和运行数据边界；控制层与执行进程分离，环境兼容待验证。
+- [Discussion](discussion.md)：已批准的需求、范围及方向；具体契约随当前 Design 同步。
+- [全流程案例 C01](references/c01-flow.md)：提交版使用审核后的合成会话与设计案例，个人原件保留在本地忽略目录；设计部分使用当前队列契约。
+- [调研依据 R01–R06](references/research.md)及[后台技术专题](../../../research/runtime/README.md)：历史参考与本轮官方文档核对；调研结论不自动成为批准契约。
+- [知识点合成模板](knowledge-point.example.json)与[关系合成模板](relation.example.json)：沿用 M04 / M05 记录组织，全部为合成数据。
+
+<a id="module-roadmap"></a>
+
+## 模块职责与 Plan 路线
+
+统一 Design 按八模块组织职责；模块编号不表示独立服务、Agent 或包。原 Design 快照只保留批准历史，后续设计变化集中写入统一文件。2026-10-13 已按模块分别编写 Plan 草案，仍分别批准；总 Plan 只管理跨模块依赖和最终验收。
+
+| 模块 | 当前 Design | 合并来源快照 | Plan |
+| --- | --- | --- | --- |
+| M01 | [后台运行、配置与持久化](design.md#runtime-contracts) | [原 Design](modules/01-runtime/design.md)、[技术方案](modules/01-runtime/technical-proposal.md) | [草案](modules/01-runtime/plan.md) |
+| M02 | [Codex 采集与材料交付](design.md#data-capture) | [原 Design](modules/02-capture/design.md) | [草案](modules/02-capture/plan.md) |
+| M03 | [episode 构建与维护](design.md#episode-model) | [原 Design](modules/03-episode/design.md) | [草案](modules/03-episode/plan.md) |
+| M04 | [知识点、关系与图索引](design.md#cognitive-map-model) | [原 Design](modules/04-knowledge/design.md) | [草案](modules/04-knowledge/plan.md) |
+| M05 | [用户理解估计与反馈](design.md#cognition-decisions) | [原 Design](modules/05-cognition/design.md) | [草案](modules/05-cognition/plan.md) |
+| M06 | [外部搜索与知识扩充](design.md#knowledge-expansion) | [原 Design](modules/06-expansion/design.md) | [草案](modules/06-expansion/plan.md) |
+| M07 | [检索、注入与 MCP 接入](design.md#context-retrieval) | [原 Design](modules/07-context/design.md) | [草案](modules/07-context/plan.md) |
+| M08 | [本地 Web、配置维护与在线编辑](design.md#local-web-console) | [原 Design](modules/08-web/design.md) | [草案](modules/08-web/plan.md) |
+
+## 依赖与推进顺序
+
+按用户 2026-10-13 的要求，先完成总 Plan 与模块 Plan 草案；实施前仍核对新增 Design / Prompt 和对应模块 Plan 的批准范围。Plan 在 `modules/<模块>/plan.md` 保存，引用统一 Design 的实际依赖契约；仍归属 Issue #4 与当前分支。运行条件、Desktop 生命周期和搜索接入分别在总 Plan 的 G1–G3 验证 / 收敛，未取得证据不假定通过。
+
+实施依赖为 M01 → M02 → M03 → M04 / M05；M06、M07 使用知识与认知记录，M08 复用业务能力。M07 可查询已有记录，不必等待一次外扩；页面只读部分可使用已保存记录，编辑与纠错分别依赖归属模块。模块通过自身验证后，还需取得 Desktop、Web 与完整反馈闭环验收证据。
+
+## 跨模块契约归属
+
+| 契约 | 定义模块 | 主要使用者 |
+| --- | --- | --- |
+| 后台生命周期、任务执行、配置、保存与历史版本 | M01 | M02–M08 |
+| 采集过滤、队列与来源行号 | M02 | M01 / M03 |
+| 交流归属、边界、关闭与修订 episode | M03 | M04 / M05 / M07 / M08 |
+| 知识、独立关系与名称图 | M04 | M05–M08 |
+| 观察、假设、帮助条件与理解估计 | M05 | M06–M08 |
+| 外扩发现、来源核查与候选排序 | M06 | M04 / M05 / M07 / M08 |
+| 子图、两列表、MCP 与本轮上下文交付 | M07 | Codex 接入端 / M05 / M08 |
+| 页面交互与 Web 请求反馈 | M08 | 本地用户，业务规则复用归属模块 |
+
+一个字段、状态或业务规则只由归属模块维护；跨模块变化同步实际依赖方及 C01 受影响步骤。沿用 [Spec 工作流](../../README.md)和仓库 SDLC 规则。
