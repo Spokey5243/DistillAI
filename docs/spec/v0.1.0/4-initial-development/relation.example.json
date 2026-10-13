@@ -1,0 +1,99 @@
+{
+  "example_note": "借用 vLLM batching 与项目任务调度器这一主题，所有日期、ID、队列行号、用户表现和评估均为合成示例。M04 已采用本例字段组织与关系方向；来源按 M02 队列引用，知识点、episode、队列及假设引用不对应实际文件。认知具体语义由 M05 对齐，本例不作为真实用户证据。",
+  "id": "rel-example-batching-scheduling",
+  "name": "借助 batching 理解任务合并调度",
+  "source_knowledge_id": "kp-example-vllm-batching",
+  "target_knowledge_id": "kp-example-task-scheduler",
+  "kind": "user_association",
+  "relation_type": "analogy",
+  "direction_semantics": "从用户用作参照的概念，指向其试图理解的概念；不表示因果、先备或实现依赖。",
+  "record_status": "active",
+  "content": {
+    "statement": "用户借助 batching 的印象，提出把积累的待处理材料合并后再安排 Agent 运行。",
+    "context": "讨论后台处理调用次数、重复上下文和等待时间之间的取舍。",
+    "conditions": ["类比讨论限于合并待处理工作这一思路，具体执行机制需要分别核查"],
+    "source_refs": [{"connector": "codex", "session_key": "session-example-relation-01", "line_start": 1, "line_end": 1}]
+  },
+  "analogy": {
+    "mapping": [
+      {
+        "source_aspect": "用户描述中的 batching：把若干待处理工作组织到一起",
+        "target_aspect": "把同一 session 积累的材料合并为一次后台分析任务",
+        "proposed_by": "user",
+        "source_refs": [{"connector": "codex", "session_key": "session-example-relation-01", "line_start": 1, "line_end": 1}]
+      }
+    ],
+    "limits": [
+      {
+        "statement": "不能由这一对应直接推出两者具有相同的执行机制或收益；应用层材料组织与模型服务执行需要分别分析。",
+        "proposed_by": "assistant",
+        "source_refs": [{"connector": "codex", "session_key": "session-example-relation-01", "line_start": 2, "line_end": 2}]
+      }
+    ]
+  },
+  "assessment": {
+    "assessed_at": "2026-10-03T10:00:00+08:00",
+    "status": "pending_verification",
+    "summary": "已记录用户提出的类比及助手指出的边界；机制相似性与收益尚未经过独立核查。",
+    "basis_refs": [{"connector": "codex", "session_key": "session-example-relation-01", "line_start": 1, "line_end": 2}],
+    "external_evidence_refs": [],
+    "open_questions": ["类比的对应点是否准确", "哪些条件下能够减少重复工作，哪些收益不能据此推断"]
+  },
+  "provenance": {
+    "asserted_by": "user",
+    "extracted_by": "backend_agent",
+    "created_at": "2026-10-03T10:00:00+08:00",
+    "created_from_episode_id": "ep-rel-example-01",
+    "content_updated_at": "2026-10-03T10:00:00+08:00",
+    "content_updated_from_episode_id": "ep-rel-example-01",
+    "cognition_updated_at": "2026-10-05T10:00:00+08:00",
+    "cognition_updated_from_episode_id": "ep-rel-example-02"
+  },
+  "observations": [
+    {
+      "id": "obs-rel-example-01",
+      "observed_at": "2026-10-03T09:50:00+08:00",
+      "source": {"episode_id": "ep-rel-example-01", "source_refs": [{"connector": "codex", "session_key": "session-example-relation-01", "line_start": 1, "line_end": 1}]},
+      "task": "讨论后台任务怎样组织与触发",
+      "initiation": "user_spontaneous",
+      "help": "本段记录中，助手尚未提供这一类比；更早是否接触过相同类比未知。",
+      "performance": "用户主动以 batching 作参照，提出合并积累材料后再触发处理。",
+      "scope": "证明在本次情境中主动提出联系；不证明准确理解 vLLM 机制或已形成稳定思考习惯。"
+    },
+    {
+      "id": "obs-rel-example-02",
+      "observed_at": "2026-10-05T09:50:00+08:00",
+      "source": {"episode_id": "ep-rel-example-02", "source_refs": [{"connector": "codex", "session_key": "session-example-relation-02", "line_start": 1, "line_end": 2}]},
+      "task": "再次解释为什么要合并后台材料",
+      "initiation": "assistant_prompted",
+      "help": "助手提醒此前讨论过的类比，并追问两者是否处在相同处理层面。",
+      "performance": "用户说明本项目先合并材料以减少重复输入，不据此认定模型服务采用相同执行方式。",
+      "scope": "提示下表达了类比边界；尚无新情境下独立应用的证据。"
+    }
+  ],
+  "cognition": {
+    "assessed_at": "2026-10-05T10:00:00+08:00",
+    "summary": "曾主动建立这一联想，后来在提示下解释了边界；独立迁移能力仍未知。",
+    "observation_ids": ["obs-rel-example-01", "obs-rel-example-02"],
+    "latest_observed_performance_id": "obs-rel-example-02",
+    "understanding": {
+      "connection": "曾主动提出",
+      "limits": "提示下能够解释",
+      "independent_transfer": "unknown"
+    },
+    "hypothesis_refs": ["hyp-example-engineering-analogy"],
+    "hypothesis_scope": "该外部假设可综合多条关系讨论用户是否偏好工程类比；本记录仅提供上述具体观察，不在此维护跨关系假设正文。"
+  },
+  "changes": [
+    {
+      "at": "2026-10-03T10:00:00+08:00",
+      "episode_id": "ep-rel-example-01",
+      "summary": "创建用户联想关系，记录主动提出的对应点与助手补充的边界；知识核查状态为待核查。"
+    },
+    {
+      "at": "2026-10-05T10:00:00+08:00",
+      "episode_id": "ep-rel-example-02",
+      "summary": "关系内容不变；追加提示下解释边界的表现，更新用户理解判断，不新增重复关系。"
+    }
+  ]
+}
