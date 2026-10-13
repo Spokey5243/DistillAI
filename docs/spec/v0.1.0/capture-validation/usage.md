@@ -12,7 +12,7 @@ Windows + Python 3，零第三方依赖。只采集 `UserPromptSubmit` 和 `Stop
 └── logs\capture-errors.log
 ```
 
-每行包含 `schema_version`、`event_id`、`captured_at`（UTC）、`platform`、`session_id`、`turn_id`、`hook_event_name`、`role`、`payload`。消息及 cwd/model/transcript_path 等原始元数据保留在 payload 中。失败记日志，正常对话继续；目录不可写时 stderr 也会输出错误提示。`platform` 标注事件来源（`codex` 或 `zcode`），同一存储目录混存多个宿主的会话，靠它区分。
+每行包含 `schema_version`、`event_id`、`captured_at`（UTC）、`platform`、`session_id`、`turn_id`、`hook_event_name`、`role`、`payload`。消息及 cwd/model/transcript_path 等原始元数据保留在 payload 中。失败记日志，正常对话继续；目录不可写时 stderr 也会输出错误提示。`platform` 标注事件来源（`codex` 或 `zcode`），同一存储目录混存多个 AI 工具的会话，靠它区分。
 
 ## ZCode 注册（2026-09-29）
 
