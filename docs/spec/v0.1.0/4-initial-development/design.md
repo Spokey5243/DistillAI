@@ -3,14 +3,18 @@ version: v0.1.0
 issue: 4
 branch: codex/4-initial-development
 workflow: exploratory
-status: draft
+status: approved
 decision_mode: user-approved
-material_revision: 0
+material_revision: 1
 ---
 
 # DistillAI 初版统一 Design
 
 ## 工作状态与阅读入口
+
+2026-10-14，用户明确将 OS 写隔离能力移出初版，后续独立 Issue 再实现。当前基线为修订 1：使用普通独立 Hermes 任务子进程，保留任务副本、业务路径授权、模型计数、进程树停止、冲突校验、程序写回及恢复；不承诺阻止自由 Shell / Python 写入任务目录之外。MXC、受限令牌和为沙箱配套的 stdio 模型转发均停止本轮验证；历史探针结果保留，不再作为当前 G1 的阻塞条件。后续 Issue 尚未创建。
+
+2026-10-13，用户明确要求“现在开始按照plan执行”，批准当前统一 Design、交接与 P01–P09 文本以及总 Plan / M01–M08 Plan 作为实施基线，进入 M01 Task 1。未决技术仍按 G1–G3 实测或确认；此批准不将候选 runner、模型 / 搜索服务或未验证环境视为已选定，也不授权远端写入。下文的 draft / 未实施表述保留当时的历史状态，当前状态以本段及执行记录为准。
 
 2026-10-10，按用户要求将 M01–M08 合并为一份 Design，并检查跨模块冲突。八个模块截至合并前的版本均已批准；其业务决定和批准历史继续有效。原模块文件保留为合并来源快照，不再并行维护；M01 技术方案的有效内容也纳入本文件。
 
@@ -35,7 +39,7 @@ material_revision: 0
 | 编号 | 问题与影响 | 本次处理 / 剩余条件 |
 | --- | --- | --- |
 | I01 | Discussion 的总流程、D01、Q15 仍要求 `.sent`、上传锁与持久接收确认，与已批准 M02 的共享本地队列冲突 | 当前契约仅有采集 cursor、后台任务与处理位置；通知只唤醒，不上传正文或确认交付。同步 Discussion；Honcho 研究与 C01 旧设计明确保留为历史输入。 |
-| I02 | M01 早期“数据根默认读写”、原地回退及候选配置表述，与随后批准的逐项权限、任务副本、配置生效规则不一致 | 仅向派生记录副本和工作副本开放写入，原材料和程序状态禁止修改。用户随后明确读取不限制，最新写权限见 M01；不沿用“目录不开放”推导读取禁令。 |
+| I02 | M01 早期“数据根默认读写”、原地回退及候选配置表述，与随后批准的逐项权限、任务副本、配置生效规则不一致 | 保留派生记录副本、工作副本与程序发布授权。修订 1 将 OS 越界写拒绝延后，当前路径 / 工具约定不构成进程写隔离；不沿用“目录不开放”推导读取禁令。 |
 | I03 | M03 关闭只提到接续 M04；若 M04 返回空，按新增知识列表驱动可能漏掉 M05 新用户证据 | M05 必须取得关闭 / 修订 episode 及来源，不能仅接 M04 新增列表。已有 M05 明确此行为；收尾提案明确依赖登记方式。 |
 | I04 | M02 不提供精确工具时间线，M03 却需要新一轮开始和 response 终止时刻 | 工具摘要与正文 `at` 均不承担计时。用独立运行事件表达生命周期；字段和失联处理见收尾提案，Desktop 实测仍待取得。 |
 | I05 | M05 要求 Hook / MCP 同源表现只维护一份观察，但 MCP 可能早于 Stop 落盘，尚无队列行号 | 缺少来源时不能声称已去重。提案将反馈补充先保留为待关联输入，取得真实来源后再交 M05；不增加源消息 / turn ID，不按相同文本合并。 |
@@ -84,11 +88,11 @@ M08 查看配置、episode、知识关系和处理历史，编辑交归属模块
 
 已有批准。后台本地常驻，由一个 worker 登记、合并待办、调度、调用执行层、重试和恢复。2026-10-12，用户确认使用 Hermes Python Library / `AIAgent` 承担执行层，后期本地 LLM 需求保留；此前 Pi / DeepSeek 比较保留为选型依据。初版文件持久化，不引入数据库、ORM、Docker 或额外业务服务。
 
-2026-10-12，grill 第一轮确认控制层、Hook 和 MCP 均使用 Python。Hermes 任务在独立执行子进程内通过 `AIAgent` API 运行，控制层留在受保护进程中管理任务、停止执行进程树、校验、提交和恢复；独立执行进程不意味着启动 Hermes CLI 或额外 Hermes 服务。进程分离不替代下文实际写隔离。
+2026-10-12，grill 第一轮确认控制层、Hook 和 MCP 均使用 Python。Hermes 任务在独立执行子进程内通过 `AIAgent` API 运行，控制进程管理任务、停止执行进程树、校验、提交和恢复；独立执行进程不意味着启动 Hermes CLI 或额外 Hermes 服务。修订 1 仅保留执行生命周期分离，不实现 OS 写隔离。
 
 ### 启动、通信与任务
 
-插件初次调用检查后台身份及健康状态，不存在时在启动锁内启动，其他调用等待同一就绪结果。实例按数据根区分，受保护的实例文件保存实例 ID、PID、协议版本、地址及本机授权；不能只凭 PID 或端口响应认作后台。Hook / MCP 退出不结束服务。显式退出先停止新任务，再停止运行进程树、恢复和保存，下一次调用按同一入口恢复。
+插件初次调用检查后台身份及健康状态，不存在时在启动锁内启动，其他调用等待同一就绪结果。实例按数据根区分，由控制层维护的实例文件保存实例 ID、PID、协议版本、地址及本机授权；不能只凭 PID 或端口响应认作后台。Hook / MCP 退出不结束服务。显式退出先停止新任务，再停止运行进程树、恢复和保存，下一次调用按同一入口恢复。
 
 共用本机 HTTP 服务绑定 `127.0.0.1`，首次启动选择可用端口；Web 和 MCP stdio 桥接同一业务后台及 worker。限制请求体，验证 Host / Origin，拒绝未知路由及未授权 / 外部跨源请求。MCP 使用标准协议实现，不手写协议，不由每次 Hook 新建 Agent 或 worker。
 
@@ -102,6 +106,8 @@ M08 查看配置、episode、知识关系和处理历史，编辑交归属模块
 | `GET /v1/config` | — | 脱敏配置、现行与待生效值 |
 | `PUT /v1/config` | expected_version、修改值 | 保存版本及生效说明；冲突 `409`，无效不写入 |
 | `GET /v1/history` | 关联标识、筛选、分页 | 当时输入输出及执行记录 |
+| `POST /v1/episode-corrections` | session_key、episode_refs（expected versions）、assignments（episode_id / source_refs）、reason | 同会话已有记录的明确归属修订；task_id / 阶段 |
+| `POST /v1/cognition-corrections` | record_kind、record_id、expected_version、performance、help、reason | 独立用户纠错来源及 M05 任务；task_id / 阶段 |
 
 后台任务至少记录 task_id、kind、来源范围、输入版本、去重标识、关联任务、状态、调用计数、配置 / Prompt / 权限版本和输出版本。任务 ID / 产品记录 ID 不等于源消息 ID。相同种类、输入范围 / 版本及触发的重复登记复用任务；用户明确重新分析建立新任务并关联旧任务。
 
@@ -125,33 +131,39 @@ running / validating → recovering → failed / cancelled / recovery_conflict
 
 <a id="agent-sandbox"></a>
 
-### 进程隔离与文件权限
+### 执行进程与文件操作约定
 
-保留任意 Shell / Python 与自由联网。2026-10-10，用户明确沙箱只限制写入，读取不做沙箱限制；此要求替代此前“目录不向 Agent 开放”被解释为不可读取的表述。写边界覆盖文件工具、命令及全部子进程，允许写任务副本和临时目录，阻止改动原始输入、原文件和后台程序状态。MXC ProcessContainer 保留为候选；若所选框架已提供符合要求的写隔离，不额外叠加。cwd、命令过滤或协作式 abort 不能替代实际写限制。
+保留任意 Shell / Python 与自由联网。2026-10-14 用户决定不在初版实现 OS 写隔离，读取也不设置沙箱限制。任务用普通独立子进程执行，不接入 MXC / restricted token runner，不调整主机 ACL。工具清单、工作目录与 Prompt 引导 Agent 修改任务副本；这些是运行约定，不能阻止任意命令直接写入原始输入、原文件或后台状态。后续写隔离 Issue 再确定全进程写边界和实际隔离机制。
 
-| 对象 | 实际权限 |
+| 对象 | 初版程序 / 工具约定（不是 OS 权限保证） |
 | --- | --- |
-| 本任务派生产品记录、用户授权工作路径 | 独立任务副本读写；工作路径添加后默认读写 |
-| 本任务原始输入 | 只读，按来源和任务范围提供 |
-| Hermes / Python / Shell、控制层运行时、必要库与产品工具 | 只读运行资源，不加载个人 / 工作路径可执行配置 |
+| 本任务派生产品记录、用户授权工作路径 | 在独立任务副本维护；程序仅向仍获授权的目标发布 |
+| 本任务原始输入 | 按来源和固定任务范围读取，工具不主动修改 |
+| Hermes / Python / Shell、控制层运行时、必要库与产品工具 | 程序不修改运行资源，不加载个人 / 工作路径可执行配置 |
 | 任务临时目录 | 本任务读写 |
-| 真实用户目录、其他任务、后台状态 / 提交 / 版本 / 配置 / 凭证 | 禁止 Agent 写入；读取不限制，程序负责必要复制和发布 |
+| 真实用户目录、其他任务、后台状态 / 提交 / 版本 / 配置 / 凭证 | 由控制层管理与写回，任务工具不主动修改；自由 Shell / Python 仍拥有普通用户的文件权限 |
 
-`.distillAI` 是数据根，不是整根读写授权。工作副本记录原授权路径，不能假设 MXC 提供透明挂载或原绝对路径重映射。链接、junction、硬链接、目录身份及打开时目标替换都必须验证；不能确认时拒绝。新增链接、特殊设备、NTFS 附加流或无法可靠恢复的元数据变更先拒绝提交。
+`.distillAI` 是数据根，不是程序发布的整根授权。工作副本记录原授权路径。链接、junction、硬链接、目录身份及打开时目标替换在副本建立和程序提交阶段校验；不能确认时拒绝。新增链接、特殊设备、NTFS 附加流或无法可靠恢复的元数据变更先拒绝提交。扫描与恢复只覆盖登记的任务副本 / 程序提交，无法保证发现或回退自由命令在其他位置的直接改动。
 
-程序不主动将真实模型密钥写入 Prompt、历史或 Web 返回；任务模型调用经固定转发入口和任务授权计数。入口限制协议 / 模型 / 路由，检查授权、权限与剩余额度，不是任意 URL 代理。保留的自动重试、续推理、修正及内部请求均计数；关闭无任务额度的后台模型活动。沙箱不保证本机凭证文件不可读取；自由联网不表示能统计 Shell 使用其他凭证访问的所有外部模型。
+2026-10-13，M01 临时目录实测确认：锁住 junction 指向的目录仍允许删除 junction，不能只锁最终解析目标。带 `FILE_FLAG_OPEN_REPARSE_POINT` 打开 junction 自身并禁止共享删除可阻止该删除；实施需保护 / 校验逐级路径，无法确认时沿既有契约拒绝提交。此为 Agent 闭环的技术事实补充，未改变安全边界；Plan 已记录反例和部分通过范围，完整提交窗口仍待验证。
 
-写权限收紧立即注销任务授权，停止整个执行进程树，确认停止后恢复 / 清理；未确认停止阻止后续写任务，不只发送框架 abort。扩大写权限用于新任务。恢复程序只处理已登记变更，不重新授予旧权限。不能漏掉禁止写入目录或子进程边界；实际写隔离层、警告和 loopback 能力需记录。
+程序不主动将真实模型密钥写入 Prompt、历史或 Web 返回；任务模型调用经固定转发入口和任务授权计数。入口限制协议 / 模型 / 路由，检查授权、权限与剩余额度，不是任意 URL 代理。保留的自动重试、续推理、修正及内部请求均计数；关闭无任务额度的后台模型活动。当前不提供本机凭证文件的进程读写隔离，也不承诺防止同用户自由命令篡改后台状态；自由联网不表示能统计 Shell 使用其他凭证访问的所有外部模型。
+
+业务工作路径授权收紧立即注销任务授权，停止整个执行进程树，确认停止后恢复 / 清理；未确认停止阻止后续写任务，不只发送框架 abort。扩大授权用于新任务。恢复程序只处理已登记变更，不重新授予旧业务授权。此处是任务取消与程序发布约束，不修改 OS ACL；Job / 进程树停止只验证生命周期，不提供写隔离。
 
 ### 任务副本、版本与恢复
 
 Agent 直接使用文件 / 命令工具修改副本，不要求业务保存工具代写。程序维护 tasks、versions、commits、workspaces，原材料沿 M02 读取；正文详情使用 JSON。版本按不可变字节 SHA-256 定位，任务状态在程序锁内经同目录临时写、同步与替换保存；JSONL 仅用于追加事件。
 
 1. 建立独立字节副本和基线，记录相对路径、存在状态、哈希及所需元数据，不用硬链接。无法一致读取或文件占用时重建或报错，不略过后声称能完整恢复。
-2. 全部工具在副本运行。进程树停止后取得实际新增、修改、删除、改名集合，校验结构、身份、来源、引用及模块字段归属。改名可表达为删除与新增；不只信任 Agent 返回的文件列表。
+2. 文件工具使用副本，Shell 默认工作目录为副本。进程树停止后扫描副本的实际新增、修改、删除、改名集合，校验结构、身份、来源、引用及模块字段归属。改名可表达为删除与新增；不只信任 Agent 返回的文件列表，也不将副本扫描当作其他位置未被写入的证明。
 3. 保存前后版本、预期基线及 prepared 提交清单。取得提交 / 权限锁，确认授权有效且原文件仍等于基线；用户同期修改返回冲突，不覆盖、不自动模型合并。未改变文件不写回。
 4. Windows 通过句柄验证实际目标，在比较及写入间保持共享模式保护；新文件排他新建，目录 / 改名也核对。逐项记录应用状态，完整持久写回后记录 committed；不声称整批对外部编辑器原子可见。
 5. committed 后推进位置、登记依赖及补建索引。崩溃据同一清单补完，不重跑已提交模型任务。执行失败丢弃未发布副本；提交失败撤销已应用部分，先确认当前仍是本次发布版本。用户再编辑或恢复失败进入 recovery_conflict，保留前后版本并暂停冲突范围后续写入。
+
+2026-10-15，提交适配实测闭环：目录句柄禁止共享删除；文件和新目录通过 `NtCreateFile` 相对已固定父目录打开 / 排他创建，`OBJ_DONT_REPARSE` 拒绝路径重解析。只禁止共享写的父目录会阻止正常子项改名，不能采用；允许目录共享写时仍须检查 reparse 状态，并通过父目录对象执行操作，不能重新沿可变字符串路径写入。原文件比较及修改用同一文件句柄保护，删除用 `NtSetInformationFile` 相对父目录将原件移到同目录唯一备份名，保持文件身份及元数据；只有 committed 后删除该备份。恢复改名不覆盖已有目标，备份 / 当前文件身份或内容不符时保留并记冲突。特殊元数据和已有目录结构删除拒绝发布；新增目录由排他创建返回的句柄登记身份，恢复仅移除仍属于本提交的空目录。此为已批准文件提交契约的技术闭环，不新增执行层或写隔离。
+
+当前存储对整个原始副本基线持句柄比较，未变化文件只读保护且不写回；M04 / M05 另持其固定 episode 输入句柄直到发布结束，避免最后一次修订检查与写回间被替换。目录授权使用拒绝重解析后从实际句柄取得的完整名称，点段 / 短路径别名不成为绕过私有状态目录的授权。配置只接受当前 G1 已验证的 Chat Completions 协议，其他协议先验证再接入；密钥的历史版本留在私有 config 目录，任务历史使用脱敏快照与版本引用。
 
 取消、权限撤销、仍需超额模型生成和异常退出按失败停止 / 恢复。最后一次允许的生成已完成且程序校验通过时正常提交。任务副本有准备时间与磁盘成本，不为性能默默缩小已授权范围；缩小范围需明确呈现。远端网络操作不属于本地文件回退。
 
@@ -159,11 +171,11 @@ Agent 直接使用文件 / 命令工具修改副本，不要求业务保存工�
 
 ### 配置及生效
 
-统一 `~/.distillAI/config.json`，支持 `DISTILLAI_HOME`。配置按预期版本校验、持久化后切换；无效值保持原值并返回字段错误。按用户要求，真实 api_key 仅保存于受保护的本地配置；任务只持有内部凭证引用，密钥不进入模型、Skill、Web 读取结果或历史快照。
+统一 `~/.distillAI/config.json`，支持 `DISTILLAI_HOME`。配置按预期版本校验、持久化后切换；无效值保持原值并返回字段错误。按用户要求，真实 api_key 仅保存于控制层管理的本地配置；任务只持有内部凭证引用，密钥不进入模型、Skill、Web 读取结果或历史快照。
 
 | 已有批准配置 | 初始值 / 校验 | 生效 |
 | --- | --- | --- |
-| llm.api / base_url / model / api_key | 用户自行填写，api_key 保存本地配置，不默认继承个人 Agent 登录 | 新任务固定脱敏快照；不主动向任务载荷 / 历史输出真实 key，不要求沙箱阻止文件读取 |
+| llm.api / base_url / model / api_key | 用户自行填写，api_key 保存本地配置，不默认继承个人 Agent 登录 | 新任务固定脱敏快照；不主动向任务载荷 / 历史输出真实 key，OS 读写隔离延后 |
 | llm.parameters | 无通用 temperature / top_p 默认，仅接受所选模型 / 协议支持值 | 新任务 |
 | runtime.max_model_calls | 16，正整数 | 新任务；同任务恢复不重置 |
 | runtime.poll_interval_seconds | 1，正数，材料发现和调度共用 | 下一次调度等待，通知可提前唤醒 |
@@ -171,7 +183,7 @@ Agent 直接使用文件 / 命令工具修改副本，不要求业务保存工�
 | context.refresh_update_count | 3，正整数 | 下一次周期刷新判定，保留已有材料更新计数；首次与依赖变化触发不受该周期限制 |
 | expansion.interval_seconds | 3600，正数，即 60 分钟 | 下一次调度等待，不重置覆盖进度 |
 | expansion.batch_size | 10，正整数，单任务已有知识点上限 | 新外扩任务固定批次，运行中不改变输入范围 |
-| workspace.paths | 逐项有效路径，不覆盖受保护运行 / 配置目录 | 添加 / 扩大新任务；收紧立即撤销 |
+| workspace.paths | 逐项有效路径，业务目标不覆盖运行 / 配置目录 | 添加 / 扩大新任务；收紧立即撤销 |
 
 页面分别展示保存版本、现行任务版本与待生效值。Skill 参数由程序读取 / 组织，不依赖未定义的 `${config.xxx}` 自动替换。
 
@@ -332,7 +344,7 @@ kind=knowledge_relation / user_association；relation_type 非空，不设固定
 
 episode 分析、MCP 反馈和 Web 明确纠错进入同一维护流程。M04 空结果仍可分析已有知识的新表现；知识正文变化本身不改变理解。只更新直接有依据的知识 / 关系，同源表现只一份观察，不沿图传播掌握。同一真实来源可支持多个受影响对象，不能重复交付当多次表现。
 
-2026-10-12，grill 第一轮确认 episode 纠错后的等待行为：修订提交时，程序对直接依赖受影响来源的认知判断标记“依据已修订，等待重新分析”。标记属于受保护的依赖状态，不由 M03 改写 M05 字段；Web / MCP 可回查旧判断及其版本，但须附等待说明，新注入暂不采用这些判断。仅修正分组、证据含义未变时，由 M05 分析确认继续有效；M05 基于当前修订版本成功提交后解除对应标记，失败继续保留。历史不删除，不沿图扩大失效范围。
+2026-10-12，grill 第一轮确认 episode 纠错后的等待行为：修订提交时，程序对直接依赖受影响来源的认知判断标记“依据已修订，等待重新分析”。标记属于程序维护的依赖状态，不由 M03 改写 M05 字段；Web / MCP 可回查旧判断及其版本，但须附等待说明，新注入暂不采用这些判断。仅修正分组、证据含义未变时，由 M05 分析确认继续有效；M05 基于当前修订版本成功提交后解除对应标记，失败继续保留。历史不删除，不沿图扩大失效范围。
 
 M05 保留知识正文、关系端点与知识来源；必要结构 / 引用校验复用 M01 / M02 / M04。结果为实际修改引用及原因，允许正常空结果；理解是否成立仍由 Agent 判定。
 
@@ -432,9 +444,11 @@ SessionStart 简短入口、插件 Skill 详细方法、MCP 工具描述分别�
 
 M03 注册逻辑工具 `evaluate_episode_boundary`，在同一 Hermes 任务内完成评分往返。输入为固定旧 episode 引用及关键词 / 来源、候选轮次来源及关键词、整数 C、原文依据和理由；程序验证引用属于任务范围、关键词约束和 C 范围，按 M03 公式返回各候选的 K / S，结果及依据进入任务历史。Agent 收到结果后继续维护 episode / 缓冲副本，提交校验使用程序保存的评分结果；工具不判断语义正确、不发布文件或另建调度任务。工具计算不计模型调用，工具后继续推理计入同任务额度。无活跃 episode 不调用该工具。
 
+2026-10-16 实施绑定：明确归属纠错沿 kind=correction，固定同一 session 的已有 episode 版本和完整新归属。程序先验证来源并集守恒、无重叠及同轮完整，再由 AIAgent 维护指定副本的来源、边界理由和关闭摘要，保留主题 / 目标 / open 或 closed 状态。新材料证明旧边界错误时，evaluate_episode_revision 先核对固定版本 / 指定来源并集及 new_source_refs 中的实际引句，再在当前材料任务内允许直接修订；旧原文按需经受保护 read_episode_source 读取，返回值和范围版本保留。独立用户提交保留原请求和原因，不伪造队列位置。`cognition/reanalysis.json` 是程序依赖状态，entries 保存 record_ref、previous_episode_ref、最新 episode_ref、waiting / ready、reason、revision_source_refs 和成功后的 resolved_by；独立 Web 提交另保留 submission_ref。只标记直接观察 / 假设依据，不按图邻居传播；修订和等待状态同清单发布，Agent 修改该文件会被拒绝。M05 仅对固定的当前 episode 版本解除对应等待，同事务保存；有依据的正常无变更结果也可解除。
+
 ### C02：计时与延迟材料
 
-生命周期是程序事件，不混入 M02 的 role/text 材料。提案在受保护的会话事件记录保存 session、事件 kind、接入端观察 UTC、本地有序序号、当时队列完整行数；kind 为 request_started、response_stopped、interrupted、session_ended。序号是本产品运行事件标识，不是采集源 turn ID。
+生命周期是程序事件，不混入 M02 的 role/text 材料。提案在程序维护的会话事件记录保存 session、事件 kind、接入端观察 UTC、本地有序序号、当时队列完整行数；kind 为 request_started、response_stopped、interrupted、session_ended。序号是本产品运行事件标识，不是采集源 turn ID。
 
 UserPromptSubmit 在等待筛选前登记 request_started、暂停计时；Stop 完成采集后登记 response_stopped、启动 30 分钟；Interrupt 表达中断而不冒充成功，终止的计时语义需结合 Desktop 实测确认。SessionEnd 先复用正文补采，再登记 session_ended，让收尾排在终止前材料之后。
 
@@ -446,7 +460,7 @@ UserPromptSubmit 在等待筛选前登记 request_started、暂停计时；Stop 
 
 `expansions/<id>.json` 保存任务问题、输入 RecordRefs、探索理由、结果与缺口，业务结果按 claims / proposed_connections / open_questions 分组。每项主张指具体 source_refs 及核查说明，不用整体摘要支持所有联系。
 
-外部来源保存在 `external-sources/<id>.json`，最小为 URL、标题、读取时间、实际用于核查的相关正文 / 摘录及其版本，不下载整站或媒体。引用 `{source_kind:"external", id, version}`；用户明确 Web 编辑 / 纠错来源用受保护的提交记录 `{source_kind:"user_submission", id, version}`。二者均不能伪造 connector / 队列行号；保存内容遵循来源许可和必要范围。
+外部来源保存在 `external-sources/<id>.json`，最小为 URL、标题、读取时间、实际用于核查的相关正文 / 摘录及其版本，不下载整站或媒体。引用 `{source_kind:"external", id, version}`；用户明确 Web 编辑 / 纠错来源用程序维护的提交记录 `{source_kind:"user_submission", id, version}`。二者均不能伪造 connector / 队列行号；保存内容遵循来源许可和必要范围。
 
 覆盖进度由程序按稳定知识 ID 排序推进，新近对象可前置但不清空已覆盖进度；单节点变化、新证据或用户请求构成新探索依据。M06 成功提交结果后 M04 维护，M05 只有真实用户证据时才更新判断。
 
@@ -462,6 +476,8 @@ M04 / M05 的已提交变化按上述依赖规则登记 / 合并开放 episode �
 
 准备成功、Hook 已输出、平台是否实际进入模型上下文、助手采用分别记录。command stdout 无平台确认时，只声称已输出，端到端交付以 Desktop 验证 / 可观察记录判断，不把写 stdout 自动算助手采用。历史快照仍可回查，失效仅影响新选材，不自动删除已选恢复内容。
 
+2026-10-16 实施绑定：候选的 reanalysis_versions 由程序按其直接引用的依赖状态计算，M07 准备成功时填写并计入 candidate revision。等待期间排除新筛选，M05 解开等待后旧候选仍因依赖版本不符被排除，直到 M07 重新准备。查询历史正文保持实际记录版本，响应补充当前 reanalysis 状态；任务保存的查询输入输出仍是当时快照。Web 独立认知纠错的新增观察 source 使用 `{source_refs:[submission_ref]}`，不伪造 episode_id；普通队列观察仍保留 episode_id。
+
 ### C05：MCP 与同源证据
 
 提案只提供两个 MCP 工具，服务注册名 `distillai`，业务工具 `query_context`、`submit_feedback`，实际 Codex 名称随注册核对；M02 排除该产品自身前缀。后台 Agent 文件 / 命令工具不是这两个面向通用 Agent 的业务工具。
@@ -476,7 +492,7 @@ MCP 先到而原文未落盘时，只保存待关联补充；Stop 采集后按�
 
 ### C06：Web 请求与认证
 
-Web 从受保护程序启动浏览器，通过一次性引导凭据交换 HttpOnly / SameSite 会话，跳转清除引导 URL，不把后台 bearer 密钥放浏览器地址 / 页面。写请求验证会话、Origin / Host 和 CSRF，凭据不进入历史。具体同机认证实现随技术路线固定并验证。
+Web 从控制程序启动浏览器，通过一次性引导凭据交换 HttpOnly / SameSite 会话，跳转清除引导 URL，不把后台 bearer 密钥放浏览器地址 / 页面。写请求验证会话、Origin / Host 和 CSRF，凭据不进入历史。具体同机认证实现随技术路线固定并验证。
 
 列表提案采用 cursor / limit（初始 20，最大 100），稳定排序并绑定筛选条件，不扩展复杂搜索；处理历史按模块 / 状态 / session / episode / record 筛选。详情可指定历史版本，未知 ID / 版本明确未找到。知识保存沿 M04，episode / 认知纠错提交版本及原因转任务，页面根据任务显示最终结果。
 
@@ -485,7 +501,7 @@ Web 从受保护程序启动浏览器，通过一次性引导凭据交换 HttpOn
 
 ## 最终技术选择
 
-状态：Hermes Python Library / `AIAgent` API、Python 控制层 / Hook / MCP 及独立任务执行进程为 confirmed（2026-10-12，用户确认）；配套技术仍为 exploring。搜索方法及供应商延后确认，沙箱明确只限制写入。任务副本、共用后台、调用次数和恢复契约继续有效。[三项目源码比较](../../../research/runtime/round-4.md)与[七框架调研](../../../research/runtime/round-3.md)保留为决策前的调研记录，最终决定以 T05 为准。
+状态：Hermes Python Library / `AIAgent` API、Python 控制层 / Hook / MCP 及独立任务执行进程为 confirmed（2026-10-12，用户确认）；配套技术按验证收敛。搜索已于 2026-10-15 选择 Tavily，使用官方 Search / Extract（免 key 或私有凭证）；OS 写隔离按用户决定移出初版。任务副本、共用后台、调用次数和恢复契约继续有效。[三项目源码比较](../../../research/runtime/round-4.md)与[七框架调研](../../../research/runtime/round-3.md)保留为决策前的调研记录，最终决定以 T05 为准。
 
 ### 实际执行需求
 
@@ -498,7 +514,7 @@ Web 从受保护程序启动浏览器，通过一次性引导凭据交换 HttpOn
 | M07 筛选 | 一次按现有候选判断，结构化结果即可，不开放任意文件写工具 | 独立名额、候选校验、当前轮选择 / 恢复 |
 | MCP / Web / Hook | 共用业务入口和状态读取；直接查询不调用语义 Agent，自然语言查询交 M07 只读检索 | 本机认证、幂等、接口错误和页面反馈 |
 
-框架基础文件 / 命令工具可复用；web search / 网页读取及写沙箱按实际框架能力接入。图查询、来源引用、提交校验、反馈关联和历史属于 DistillAI。工具写入只允许任务副本及临时目录；读取不以沙箱限制。后台管理接口仍按任务授权控制。
+框架基础文件 / 命令工具可复用；web search / 网页读取及写沙箱按实际框架能力接入。图查询、来源引用、提交校验、反馈关联和历史属于 DistillAI。本版以任务副本及临时目录作为工作路径，业务发布检查授权范围；普通进程不能保证阻止自由命令在目录外直接写入。读取不以沙箱限制。后台管理接口仍按任务授权控制。
 
 ### T05：Agent 框架与后台语言
 
@@ -508,11 +524,15 @@ Web 从受保护程序启动浏览器，通过一次性引导凭据交换 HttpOn
 
 训练方向：教师模型轨迹经质量校验和筛选后用于 SFT 蒸馏；RLVR 还需小模型自行生成轨迹，以及独立可验证的奖励和评测。Hermes `save_trajectories=True` 的 JSONL 导出可作为数据起点，不能仅凭 `completed=True` 判断任务正确，也不能取得模型 API 未返回的内部推理。后续训练数据设计需保留实际 Prompt、工具定义、输入快照、模型 / 配置版本、工具结果及独立校验结果；默认导出会重建 system message，不能视为原始执行上下文的完整备份。trajectory 采集契约、奖励、训练器和训练验收另行设计，本次只确认选型与后续方向，不把完整 SFT / RLVR 实施纳入首版范围。
 
-环境边界：使用库前需要可导入的 Hermes 源码及依赖；`AIAgent(...)` 不负责安装环境。当前官方支持通过 PM 准备源码运行环境；控制层与任务执行进程分离已经确认，是否共用兼容环境由依赖验证决定，不把双虚拟环境或独立 Hermes 服务写成 SDK 的前提。固定上游版本、依赖组合、启动 / 关闭、实例与会话生命周期、预算和写隔离仍需在接入设计中收敛。
+环境边界：使用库前需要可导入的 Hermes 源码及依赖；`AIAgent(...)` 不负责安装环境。当前官方支持通过 PM 准备源码运行环境；控制层与任务执行进程分离已经确认，是否共用兼容环境由依赖验证决定，不把双虚拟环境或独立 Hermes 服务写成 SDK 的前提。固定上游版本、依赖组合、启动 / 关闭、实例与会话生命周期和预算继续由 Plan 收敛；OS 写隔离依据修订 1 延后。
 
-核对依据（2026-10-12）：[官方 Python Library](https://hermes-agent.nousresearch.com/docs/guides/python-library/)、[PM 开发流程](https://hermes-agent.nousresearch.com/docs/reference/package-management/#developer-workflow)、[trajectory 格式](https://hermes-agent.nousresearch.com/docs/developer-guide/trajectory-format)，以及官方默认分支 [`97a9ae8ee55d31bebce49f1fb6b5ef775323976a`](https://github.com/NousResearch/hermes-agent/commit/97a9ae8ee55d31bebce49f1fb6b5ef775323976a)。该提交是本次查证依据，不自动成为最终部署版本；尚未安装或执行集成 / 训练。
+核对依据（2026-10-12）：[官方 Python Library](https://hermes-agent.nousresearch.com/docs/guides/python-library/)、[PM 开发流程](https://hermes-agent.nousresearch.com/docs/reference/package-management/#developer-workflow)、[trajectory 格式](https://hermes-agent.nousresearch.com/docs/developer-guide/trajectory-format)，以及官方默认分支 [`97a9ae8ee55d31bebce49f1fb6b5ef775323976a`](https://github.com/NousResearch/hermes-agent/commit/97a9ae8ee55d31bebce49f1fb6b5ef775323976a)。该提交是当时查证依据，不自动成为最终部署版本；当时尚未安装或执行集成 / 训练。
 
-以下为决策前的候选权衡，保留以解释取舍：
+2026-10-13 的 M01 能力验证使用本地 SHA `a7b2ba02e3b9bb95d0cac87a6312cc82a3bc3eed`，PM 应用环境可导入 AIAgent，合成流式工具往返成功；完整开发激活在另一个 dev / test 环境解析处失败。实际注册工具须配合关闭动态 `tool_search` 桥，不能只依赖工具集名称。首个流式请求返回 503 时，上游会追加非流式恢复请求，入口实际收到三次生成而非正常路径的两次；转发计数必须覆盖此类尝试。证据与未验证范围见 [M01 执行记录](modules/01-runtime/plan.md#2026-10-13task-1-开始执行)，真实模型、完整隔离、全部调用计数及发布组合仍未验收；本次未实施训练。
+
+2026-10-14，官方 PM 应用准备与再次导入均退出 0，应用环境不要求 dev / test 组，完整开发激活失败另行保留。用户指定的 `deepseek-flash` 经固定官方 Chat Completions 转发取得真实流式工具往返；16 / 17 次、重启与无工具筛选并发在合成 provider 上通过。仅是 M01 能力验证，本次模型 / thinking 参数不替代可配置契约；当前发布组合仍待 G1；OS 写隔离已移至后续 Issue，结果见 [M01 当前记录](modules/01-runtime/plan.md#2026-10-14模型预算与替代隔离验证)。
+
+以下为决策前的历史候选权衡，保留以解释取舍；其中写隔离成本是当时比较口径，修订 1 已将该功能延期：
 
 | 方案 | 收益 | 代价 / 条件 |
 | --- | --- | --- |
@@ -528,13 +548,13 @@ Hermes 已选定，执行入口使用 Python Library / `AIAgent` API；后台控
 Hook / MCP stdio / 同源 Web
            ↓
 后台控制层：HTTP、worker、配置、额度、版本 / 提交
-           ↓ 任务策略与结果流；框架内置或外部写隔离
+           ↓ 任务策略与结果流；普通独立任务子进程
 Agent 执行器：Hermes Python Library / AIAgent 工具循环
            ↓ 文件 / Shell 工具，以及只限当前任务的模型 / 搜索请求
-任务副本 / 不可修改的原始输入；读取不限制
+任务副本 / 固定版本原始输入；程序约定不修改原材料
 ```
 
-带任意写文件 / 命令工具的执行部分使用实际写隔离。显式控制框架资源、配置、会话和工具加载，不自动执行个人 / 工作目录的扩展、MCP、Skill、模板或 AGENTS；这属于配置管理，不是读取禁令。业务历史来自记录，不续接个人 Agent 会话。任务消息按版本、ID 关联，控制边界验证载荷，不将原始材料拼成命令。
+带文件 / 命令工具的执行部分使用普通独立子进程，默认工作目录为任务副本；OS 写隔离延后。显式控制框架资源、配置、会话和工具加载，不自动执行个人 / 工作目录的扩展、MCP、Skill、模板或 AGENTS；这属于配置管理，不是读取禁令。业务历史来自记录，不续接个人 Agent 会话。任务消息按版本、ID 关联，控制边界验证载荷，不将原始材料拼成命令。
 
 程序组装共用 Prompt + 本任务 Prompt + 固定版本载荷；准备 / 维护使用框架工具循环。当前轮筛选独立执行，无文件 / Shell 工具，只有已有候选与结构化返回；所有模型请求经任务计数入口。具体并发 API 随 Python 接入设计确定，控制提交串行，不因独立注入名额允许两个业务写者覆盖共享文件。
 
@@ -591,7 +611,7 @@ projects/
 
 源码位置、运行环境和运行数据分开管理。两个源码目录不推导出两个虚拟环境；PM 环境的实际位置不写死为源码内 `.venv/`。DistillAI 运行数据由 `DISTILLAI_HOME` 定位，默认 `~/.distillAI/`，包括材料、episode、知识与关系、任务副本、上下文及历史；Hermes 配置和运行数据由 `HERMES_HOME` 定位，不默认复用用户个人 Hermes 配置。数据、凭证、日志和虚拟环境不进入产品源码提交。
 
-本节记录目录与启动职责。控制层与任务执行进程分离；是否共用兼容环境、依赖组合、预算计数及 OS 写隔离仍待接入设计细化和 Plan 验证。目录分离、进程分离与环境激活本身不提供写隔离。
+本节记录目录与启动职责。控制层与任务执行进程分离；是否共用兼容环境、依赖组合和预算计数继续由 Plan 验证。修订 1 将 OS 写隔离延至后续 Issue；目录分离、进程分离与环境激活本身不提供写隔离。
 
 ### T06：关联技术和初始参数
 
@@ -599,15 +619,28 @@ projects/
 | --- | --- | --- |
 | 图 | Python 有向多关系图，具体实现待收敛 | 既有名称映射、独立关系和一跳查询契约不变；Graphology 为此前 TS 路线候选，不作为当前依赖。 |
 | Web | 原生 HTML / CSS / JS，后台同源提供，复用业务 API | 当前只有表单、详情、列表，不引入前端框架 / 构建系统；若后续交互复杂再评估。 |
-| MCP | Python 官方 SDK，stdio 桥接常驻后台，具体版本与接口待固定 | 不手写协议；此前 TS SDK 候选不作为当前依赖，实际连接在 Plan 验证。 |
+| MCP | Python 官方 SDK 2.0.0，`mcp.server.MCPServer` / stdio 桥接常驻后台 | 2026-10-15 官方客户端握手、列工具、结构化工具往返退出 0，协议 2025-11-25；产品依赖在 pyproject / uv.lock 固定，32 个 SDK 依赖版本与本次 PM 应用环境匹配。产品业务 MCP 及 Desktop 接入仍由 M07 验收。 |
 | Hook 交付 | Python command SessionStart / UserPromptSubmit，additionalContext；compact 恢复当前轮选择 | [官方 Hooks](https://learn.chatgpt.com/docs/hooks)支持入口及 compact 恢复；仍需 Desktop 验证。 |
-| Windows 文件互斥 / 提交 | 受保护 Python 控制层调用窄范围 Win32 句柄 API，具体适配待验证 | [CreateFileW](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew)提供共享模式；此前 Koffi 属于 TS 路线提案，不作为当前依赖。句柄身份、写入 / 删除保护、落盘及占用恢复在 Plan 验证，普通文件替换不能代替句柄保护。 |
+| Windows 文件互斥 / 提交 | Python 控制层调用窄范围 Win32 句柄 API，具体适配待验证 | [CreateFileW](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew)提供共享模式；此前 Koffi 属于 TS 路线提案，不作为当前依赖。句柄身份、写入 / 删除保护、落盘及占用恢复在 Plan 验证，普通文件替换不能代替句柄保护。 |
 | 外部检索 | 框架内置或独立搜索 API + 网页读取，方法及供应商延后 | Hermes 已选定，搜索后端仍待确认；当前聊天工具或个人 Agent 登录不作为产品凭证。 |
 | LLM | 按用户要求保留 api_key 配置，供应商 / 协议 / base_url / model 由用户填写；支持后期本地 LLM 服务 | 不固定服务商；实际 context / output、流式 / 工具适配及辅助请求路由在 Plan 验证；三候选接入差异见第 4 轮。 |
 | 子图刷新 | 已确认每 3 次有效更新，首次必准备 | grill 第二轮用户确认的可配置初始值；计数口径及依赖变化触发不变，效果待验证。 |
 | 外扩周期 / 批次 | 已确认每 60 分钟触发，单次最多 10 个已有知识点 | grill 第二轮用户确认的可配置起始值，无效率实测；同级排队、覆盖进度与新依据重探索规则不变。 |
 
-沙箱兼容、管理员准备、真实文件句柄提交、资源发现旁路、loopback、工具 / 子进程和供应商 API 的技术事实，在批准的 Plan 内验证。当前不安装依赖、不改主机 ACL、不进行产品试运行。未选搜索 / 模型服务时必须保留待确认，不用占位供应商作为实施基线。
+当前只验证普通任务子进程、模型转发 / 计数、停止、文件句柄提交和依赖组合。2026-10-14，用户将 OS 写隔离及配套 runner 延至后续独立 Issue；不再验证 MXC / restricted token / 沙箱 stdio 模型转发，不调整主机 ACL。读取与网络沿普通进程行为；未选搜索服务继续待确认。以下写隔离探针是修订前的历史证据，不构成当前 G1 阻塞或放行结果。
+
+#### 写隔离历史验证
+
+状态：`superseded`，功能已移出本次范围。
+
+2026-10-13，候选 MXC `1.0.0` 的已校验官方原生 executor 在本机报告 `base-container`，不需要 DACL augmentation。使用全本机可用盘只读、仅合成任务目录 / 临时目录可写的策略，Python 与子进程读取保护文件成功，写保护文件被拒绝，写允许目录成功。但完整策略的 `network.ingress.hostLoopback="allow"` 被当前 Windows 拒绝，不能连接所需的本机模型转发入口，G1 未通过；文件测试不替代完整网络 / Hermes / Shell / 子孙进程验收。
+
+此前替代候选状态为 `superseded`：2026-10-14 用户先批准验证 Win32 `WRITE_RESTRICTED` token + Low integrity + Job 的仅限写路线，保留 Hermes / Python 与共用后台。授权 SID、ACL 与完整性标签只施加到本任务新建副本 / 临时目录，结束时撤销；不修改真实工作目录、盘根、个人目录或系统设备 ACL。借鉴[本地 DeepSeek ACL 运行边界](../../../research/runtime/round-4.md)，核对普通组 / 限制 SID、父目录删除权、硬链接及子孙进程，不把简化 token 或 Job 当成完整安全实现。验证不等于采用产品 runner，不安装 DeepSeek 框架。
+
+同日实测：明确当前用户 ACL 的合成目录中，Python / PowerShell / 子孙进程写边界、loopback / 外网、Job 停树和目录权限撤销通过。但当前用户仅靠 OWNER RIGHTS 可读的文件，在替代 token 下可能读失败；仅 Low token 可读，加入 WRITE_RESTRICTED 后失败。当前 PM 底层 Python 实际不可读，Hermes venv launcher 因此启动失败；只修改新建合成文件的用户 read ACE 可恢复读取。此反例不是主动读取白名单，仍是额外的实际读取差异；不将其解释为“不限制读取”已满足，也不修改被保护目录来修补。详细命令、有效 ACL 恢复及范围见 [M01 执行记录](modules/01-runtime/plan.md#2026-10-14模型预算与替代隔离验证)，G1 未通过。
+
+MXC + stdio 模型转发候选状态为 `superseded`。该提案尚未实现，用户随后将写隔离延后，不再等待其批准或继续验证；模型请求使用普通任务子进程可达的本机转发入口。后续 Issue 可参考已有文件边界、host loopback 和 OWNER RIGHTS 反例，再决定隔离机制。
+
 
 ### T07：Agent 搜索方式与当前建议
 
@@ -616,10 +649,12 @@ projects/
 | 方法 | 对 DistillAI 的取舍 |
 | --- | --- |
 | 模型供应商内置搜索 | 接入步骤较少，但依赖实际模型 / 协议支持；通用兼容 endpoint 不能证明支持托管搜索，使用额外模型生成仍计 M01 调用次数。 |
-| 独立搜索 API + 网页读取（候选） | Agent 通过两个工具取得候选来源并阅读，后台模型可自由配置；需要搜索凭证。Tavily / Exa 均为候选，尚未选定（[Tavily API](https://docs.tavily.com/documentation/api-reference/endpoint/search)、[Exa API](https://exa.ai/docs/reference/search)）。 |
+| 独立搜索 API + 网页读取（候选） | Agent 通过两个工具取得候选来源并阅读，后台模型可自由配置；Tavily 可免 key 试用，私有凭证用于账户额度。2026-10-15 已选择 Tavily Search / Extract；Exa 未采用（[Tavily API](https://docs.tavily.com/documentation/api-reference/endpoint/search)、[Exa API](https://exa.ai/docs/reference/search)）。 |
 | 浏览器自动化 | 可处理登录 / 动态交互，但有会话与页面操作成本，初版普通资料检索不把浏览器作为必经步骤。 |
 
-由 Agent 决定关键词、选择来源及继续核查，程序执行检索 / 读取、保留实际来源和错误。摘要不自动算已阅读全文，抓取失败明确记录；不把搜索供应商综合答案当唯一事实依据。基于 Hermes 再比较具体搜索接入，不建设多供应商切换框架。
+由 Agent 决定关键词、选择来源及继续核查，程序执行检索 / 读取、保留实际来源和错误。摘要不自动算已阅读全文，抓取失败明确记录；不把搜索供应商综合答案当唯一事实依据。不建设多供应商切换框架。
+
+2026-10-15，用户选择 Tavily，取代此前延后选择的状态。控制层固定调用官方 `https://api.tavily.com/search` 与 `/extract`，复用已固定 Hermes Tavily 实现的请求头和结果归一化；不启用其隐式个人 `.env` 或其他供应商回退。`search.api_key` 私有版本配置优先，否则读取控制进程 `TAVILY_API_KEY`；没有 key 时按 Tavily 官方已公开的 keyless Search / Extract 模式调用，受免费限流，失败不切换到别的服务。页面、任务快照及 Prompt 只返回 `search_key_configured`，不返回 key。配置修改只影响新任务，运行任务仍使用其配置版本；进程环境凭证在启动时固定。工具仅 M06 可调用，实际提取的必要正文保存为 external 来源，搜索摘要只保留为候选。额度耗尽、搜索失败和正文读取失败分别记录；G3 实测未通过前不启动自动外扩。keyless 的依据是 [Tavily 官方文档](https://docs.tavily.com/documentation/keyless)，此前将 key 当作必需条件的判断已修正。
 
 <a id="prompt-finalization"></a>
 
@@ -629,7 +664,7 @@ projects/
 
 | Prompt / 说明 | 必须覆盖的内容 | 结果与边界 |
 | --- | --- | --- |
-| 后台共用规则 | 输入不可信、任务范围、只写副本、角色 / 来源 / 帮助、未知、按需读取及正常空结果 | 不用 Prompt 执行沙箱 / 计数 / 提交控制 |
+| 后台共用规则 | 输入不可信、任务范围、只写副本、角色 / 来源 / 帮助、未知、按需读取及正常空结果 | 计数 / 提交由程序控制；OS 写隔离延后 |
 | episode 维护 | 轮次 / 连续性、关键词与 C / 依据、缓冲分组、收尾不足窗口、修订 | 文件变更与结果引用；K / S 由程序计算 |
 | 知识维护 | 只提实际内容、查已有、同义归一、条件 / 冲突、多关系 / 方向、保留 M05 字段 | 原文 / 外部依据，空结果成功，不判断用户理解 |
 | 用户模型 | 自己的话解释、历史表现 / 帮助、竞争解释、支持 / 反对、限定更新 | 不用提问 / 附和 / 助手解释证明独立能力，不沿图传播 |
@@ -866,7 +901,7 @@ DistillAI 为当前会话提供有来源的历史知识、用户表现和理解�
 | 永久测试组 | 稳定契约 / 将来回归 | 现有覆盖 |
 | --- | --- | --- |
 | 采集 / 来源 | 过滤、cursor 不提前推进、完整行 / 行号稳定、通知幂等 / 丢通知可补登记 | 历史 test_capture 不覆盖新队列与后台契约 |
-| 运行 / 安全 / 恢复 | 越界写入及子进程写入拒绝、立即撤销、次数跨恢复不重置、末次允许请求可完成而超额请求不发出、提交和位置一致、独立修改不被覆盖；读取不限制 | 现有采集测试不覆盖 |
+| 运行 / 安全 / 恢复 | 业务授权收紧与停树、次数跨恢复不重置、末次允许请求可完成而超额请求不发出、提交和位置一致、独立修改不被覆盖；读取不限制 | 现有采集测试不覆盖 |
 | episode 业务 | 一个活跃记录、归属 / 缓冲不重叠、生命周期暂停 / 重计、关闭 / 修订触发正确固定版本分析；已被修订替代的旧版 M04 / M05 分析不能发布为当前结果 | 尚无产品测试；公式边界可程序检查，不固定 LLM 自评分正确性 |
 | 记录 / 图 | 端点及来源可定位、多关系不丢、改名 / inactive 生效、跨模块不覆盖字段 | 尚无产品测试；M01 恢复不在各模块重复测试 |
 | 反馈 / 上下文 | 同源不重复观察、未知不冒充结论、选择 ID / 版本 / 数量有效、compact 不重筛及恢复原选择、错误不伪装空；只读检索不发布业务变更且引用对应实际版本；查询取消只停止关联任务，不抢占运行中维护且优先于普通待办 | 尚无产品测试；不固化模型措辞 |
@@ -893,3 +928,24 @@ DistillAI 为当前会话提供有来源的历史知识、用户表现和理解�
 2026-10-12，grill 第四轮用户确认：当前轮注入最高优先、MCP 只读检索其次、普通后台维护最后；查询复用普通执行名额，不抢占正在运行的任务；MCP 等待结果，客户端取消或平台超时停止关联查询，明确错误且不冒充无匹配。M01 / M07、C05、P09-C 与验证契约同步，Discussion、README 和流程案例同步。决策方式为用户确认；本轮九项审查决定均已记录，统一 Design 与 Prompt 整体仍待批准。配套技术实现、依赖 / 环境兼容、写隔离、文件句柄与 Desktop 信号须取得后续证据，搜索后端按用户要求延后；尚无 Plan，本次无现有 Plan 同步影响。仅更新文档，不实施、安装依赖或执行 Commit / Push。
 
 2026-10-13，用户要求开始编写 Plan。按现有分模块路线建立总 Plan 和 M01–M08 草案，覆盖九项 grill 决定、实际文件 / 依赖 / 验证、运行条件和完整初版验收。当前只授权计划编写，统一 Design / Prompt 保持 draft，不补造整体批准；实施前仍核对对应批准范围。文件分工、标准库图 / HTTP 和独立查询调用取消关联是 Plan 的实施安排，未改变既有业务契约；本次状态 / 入口同步不增加 material_revision。Plan 已与当前 Design 同步，尚未执行运行验证、安装、产品实现或 Commit / Push。
+
+
+2026-10-14，用户明确要求本次不实现写隔离，后续 Issue 再做。统一 Design 修订为 `material_revision: 1`，决策方式为用户确认：初版采用普通独立任务子进程，移出 OS 越界写拒绝 / runner / ACL 和相关沙箱验收；保留任务副本、业务路径授权、模型转发 / 预算、可靠停树、冲突安全写回与恢复。M01、T06、验证要求及总 / M01 Plan、Discussion、C01 与入口同步；旧模块 Design 与研究轮次保留来源快照。安全边界明确为没有 OS 写隔离，副本之外的自由命令改动不属于程序回退保证。后续 Issue 尚未创建；本次没有远端写入。
+
+### 2026-10-15：实施字段映射（Agent 闭环）
+
+沿已批准 C01 / M03 / M04 收敛机械字段，不改变语义判定或验收门禁：buffers/<session_key>.json 保存 connector、session_key、active_episode_id、buffer；processed_line / material_updates 由控制层校验后写副本，与业务文件同清单发布。buffer 保存 source_refs、evaluation_version、keywords、C、reason、group；评分原始输入与程序结果以不可变版本保留，episode.boundary_basis 使用 reason、source_refs、evaluation_versions。初次没有旧 episode 时，先从队列登记首轮以形成固定旧记录，后续范围继续扫描登记；轮次归属仍由源正文裁定，不以任务批次切主题。
+
+M04 新建 ID 由任务授权的 new_record_id 生成；既有 ID 保留。关系显式对称采用 symmetric=true，direction_semantics 继续保留文字，两端不反写；省略即按所给有向端点查询。M05 字段及 cognition_ / observation_ / hypothesis_ 开头的 provenance 归其维护，M04 保留旧 changes 再追加。控制层统一填 RecordRef 的字节版本，任务正式提交状态仍由 M01 判定。
+
+内部工具路由为 /internal/tasks/<task_id>/tools/evaluate_episode_boundary 或 new_record_id，使用该任务 token，限制运行类型 / 状态，禁止浏览器 Origin，不计模型生成。已 committed 的后置登记 / 索引失败保留待办，恢复和轮询只补登记，后台仍可读取详情，不重新执行模型。公开只读知识入口落实为 /v1/knowledge/lookup、/v1/knowledge/<id>/neighbors、/v1/records/<knowledge|relation>/<id>，沿 C06 的统一授权。上述为实现映射补充，material_revision 不变；Plan 已同步已完成范围和待验收项。
+
+同日 M05 / M07 字段映射：观察身份按真实用户原始位置复用，助手背景不增加表现；跨对象假设使用记录 / 观察定位。上下文文件使用 id、session_key、episode_ref、record_refs、subgraph、mcp_context、injection_candidates、material_updates；候选 revision 由程序按正文 / 条件 / 引用变化维护。子图节点 / 边只含既有名称、版本和端点。新增内部 audit_reads 仅接受运行中 query 的固定记录 / 来源，公开查询用 /v1/queries/<内部调用UUID> 及 cancel 子路由，反馈为 /v1/feedback。服务查询 token 不对模型暴露；模型只获得当前任务 token。实现未改变 C04 / C05 的语义要求，自动冷启动与真实交付的当前限制见 M07 Plan，material_revision 不变。
+
+同日 M04 / M06 / M08 映射：external / user_submission 来源使用既定 source_kind / id / version，前者保留实际提取的 text / URL / title / read_at / truncated，后者保留原输入 / 理由 / UTC。M04 指定字段编辑通过 `/v1/knowledge-edits` 登记，仅程序追加对应来源和 changes；内容编辑或外扩自身不登记用户已掌握分析。M06 结果是 id / input_refs / question / reason / claims / proposed_connections / open_questions；各主张或缺口保留 statement / source_refs，核查项增加 supported / conflicting / unverified 及 verification，可保留 conditions / value 的定性说明。连接端点为已有 RecordRef 或明确命名的 candidate，不冒充已提交对象。程序只核对实际来源和身份，不机械判断语义支持。
+
+外扩周期保存每对象依据、已提交游标及当前待办；模型未配置不消耗周期，失败不记覆盖，旧输入取消后按新依据续排。显式用户要求经 `/v1/expansion-requests` 登记，包含 client_request_id / knowledge_refs / question / reason，同一请求 ID 不可更换载荷；失败任务通过 `/v1/tasks/<id>/retry` 保留原次数重试。web_search / fetch_page 只对运行中的 M06 开放，用其 token 调用控制层；实际网络调用历史保存 access_mode，不保存凭证。工具返回实际提取的正文片段，超过 16,000 字符保留截断。
+
+Web 固定静态路由为 `/`、`/app.js`、`/styles.css`，浏览器经单次 `/web/bootstrap` 交换后访问同源资源；来源只能按引用解析。列表与历史使用绑定筛选的 HMAC 游标；详情传 version 时只读取该不可变版本。任务历史按白名单字段或实际生成 attempt 读取 `/v1/tasks/<id>/artifacts`，不提供任意版本文件读取。配置中的两类 api_key 空字符串保留、null 显式清除私有凭证；`search_environment_configured` 只报告启动进程是否存在环境凭证。该映射落实既定配置 / 编辑 / 引用要求；搜索选择记录于 T06，material_revision 仍为 1。
+
+2026-10-16 Web / 恢复绑定：`GET /v1/related` 只接受 record_id 或 episode_id 之一及 cursor / limit，按实际 RecordRefs 和提交版本建立关联，历史 context / expansion 从不可变内容读回；不按模型文字中的 ID 匹配。`POST /v1/reanalysis-requests` 接收 client_request_id、record_id、reason，为仍等待的直接依据登记新的固定当前 episode 版本 M04 → M05；同请求复用，原失败任务和预算不变，不自动合并原副本。筛选提交前另逐项复核当前候选 revision / 文字 / 条件 / refs，候选本身变更时只排除该条。

@@ -2,7 +2,7 @@
 
 | 元信息 | 当前状态 |
 | --- | --- |
-| 文档更新日期 | 2026-10-13 |
+| 文档更新日期 | 2026-10-15 |
 | 最新完成轮次 | 后台运行技术专题第 4 轮最新源码 / 同维度比较；既有第 2 轮专题（Eigma、OpenMAIC、Honcho）保留 |
 | 第 1 轮完成日期 | 2026-10-02 |
 | 当前阶段 | Issue #4 八模块 Design 已合并；2026-10-12 用户确认 Hermes AIAgent / Python 与独立任务进程，完成九项 grill 决定；2026-10-13 总 Plan / 八模块草案已创建。统一 Design / Prompt 与各 Plan 批准状态仍以 Spec 为准，搜索后端延后，尚未安装或验证集成 |
@@ -18,6 +18,12 @@
 同日第 3 轮按用户要求比较 DeepSeek Harness、Claude Agent SDK、Codex SDK、OpenAI Agents SDK、Pi、Deep Agents、Hermes；以只限写的沙箱口径比较现成能力与框架厚度。采用官方文档及本地 Codex / Hermes 快照，优先保留 DeepSeek / Pi 对照；随后补核 Hermes 官方 Python Library 与当前原生 Windows 支持，撤回旧快照导致的 WSL2 限制结论，保留 Python 嵌入候选。框架与语言未选。它是执行技术专题，不改变下述七个记忆 / 知识产品的历史范围。
 
 同日第 4 轮按用户要求聚焦 DeepSeek Harness、Pi、Hermes SDK / Library，并纳入后期本地 LLM 服务。经授权下载三个最新默认分支，记录固定 HEAD / 发布版本，比较程序接入、联网工具、Windows 写隔离、资源控制、安装负担和预算 / 中断。完整结果交由用户选型；其他四个框架只退出本轮重点范围，不记为正式排除。
+
+2026-10-13，当前 Design 与 Plan 获准实施，M01 开始能力验证：Hermes 应用环境的合成流式工具往返及 503 恢复通过；完整开发激活失败，MXC 所需 loopback 未通，G1 未通过。Job 停树 / 文件句柄 / 文件边界的部分实测及待确认替代路线见 [后台运行当前状态](runtime/README.md)与 [M01 执行记录](../spec/v0.1.0/4-initial-development/modules/01-runtime/plan.md#2026-10-13task-1-开始执行)。历史四轮研究结论保留，实施验证不另编号为研究轮次。
+
+2026-10-14，官方 PM 应用准备、真实 `deepseek-flash` 工具往返和合成预算 / 并发验证通过。受限令牌候选取得部分写 / 网络 / 停树证据，但 OWNER RIGHTS 读取差异阻止 Hermes 运行；此为历史探针结果。用户随后将 OS 写隔离延至后续独立 Issue，不再等待 MXC + stdio 候选批准，写隔离失败退出当前 G1。当前范围和历史反例见 [运行专题](runtime/README.md)与 [M01 当前记录](../spec/v0.1.0/4-initial-development/modules/01-runtime/plan.md#2026-10-14os-写隔离移出初版)；后续 Issue 尚未创建。
+
+2026-10-15，当前范围 G1 已通过，M01 已实施存储、调度 / 配置 / 预算、直接 AIAgent 子进程和 HTTP / 单例。产品适配在本机合成 provider 上完成工具、文件 / Shell 发布、503 重试和 16 / 17 次边界；Check / Serve / Stop 真实启动组合已验证。业务模块与 Desktop / MCP / Web 继续实施，不将基础运行通过记为完整初版；详见 [M01 执行记录](../spec/v0.1.0/4-initial-development/modules/01-runtime/plan.md)。这是实施进展，不新增研究轮次。
 
 首轮已形成记录的对象为 Graphiti、Mem0、Letta、Honcho、Eigma、LLM Wiki，以及补充教学验证参考 OpenMAIC，共七个调研对象：六个记忆与知识方向，加一个教学参考。
 

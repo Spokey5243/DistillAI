@@ -11,6 +11,10 @@ decision_mode: user-approved
 
 ## 批准与当前阶段
 
+2026-10-14，用户将 OS 写隔离移出当前初版，后续独立 Issue 再实现。当前使用普通独立 Hermes 子进程，保留任务副本、业务路径授权、模型计数、停树、冲突安全写回和恢复；不承诺拒绝自由命令的目录外写入。MXC / token / 沙箱 stdio 的验证和批准请求结束，具体范围以统一 Design 修订 1 和 M01 Plan 为准；后续 Issue 尚未创建。
+
+2026-10-13，用户要求“现在开始按照plan执行”，批准当前统一 Design / Prompt、总 Plan 和八份模块 Plan 进入本地实施。当前执行 M01 Task 1；未验证运行能力和未选服务继续由 G1–G3 管理，远端操作授权保持独立。
+
 2026-10-08，用户确认 Discussion 内容没有问题，授权整理后将状态改为 `approved`，进入实际设计讨论，并要求按模块分别保存 Design 和 Plan、分别实施。本文件作为初版需求、范围与方向基线。
 
 已确认功能范围、四项验收、统一配置和本地 Web；2026-10-10 删除遗忘曲线，理解改为按历史回复估计，Web 只承担配置、查看与编辑。用户要求合并八模块 Design，冲突以 Design 为主。2026-10-12，用户最终选择 Hermes SDK / Python Library 的 `AIAgent` API 作为后台 Agent 执行入口，考虑后续 trajectory 蒸馏与小模型 RLVR；同日 grill 第一轮确认 Python 控制层 / Hook / MCP、独立任务执行子进程及三项业务交接补充。环境是否拆分留待依赖兼容验证，配套技术和训练细节待收敛。沙箱只限制写入，读取不限制；模型 API key 由用户填写，搜索方法延后确认。既有业务批准继续有效，其余新增交接及九组 / 十二段 Prompt 首稿见 [统一 Design](design.md)。2026-10-13 按用户要求创建[总 Plan](plan.md)和八份模块草案，批准状态不变，尚无产品实施。
@@ -101,7 +105,7 @@ flowchart TD
 | confirmed | `~/.distillAI/config.json` 统一管理运行参数；本地 Web 提供配置、历史浏览和模块行为核查，保留当时的输入输出、配置与 Prompt 版本供回查 | T01 / T02 / T03 |
 | confirmed | 后端通过 API 调用 LLM；先用现有供应商，后续私有模型单独通过 vLLM 部署为 LLM 服务 | T02 |
 | confirmed | Hermes SDK / Python Library 执行层；后续利用 trajectory 蒸馏闭源模型能力并开展小模型 RLVR。环境组织与训练方案待设计；worker、任务副本与提交恢复沿 M01 | T02 / Q04 / Design T05 |
-| confirmed | 沙箱只限制写入，读取不限制；已有 MXC 方向为候选，框架自带写沙箱满足要求时不额外叠加 | M01 / Q04 |
+| confirmed | OS 写隔离延至后续独立 Issue；本次保留普通执行进程、任务副本、停树和程序提交，不承诺 OS 越界写拒绝 | M01 / Q04 |
 | confirmed | 周期子图更新维护两个排序列表；用户 Prompt 到达后由 LLM 筛选注入，等待时间暂不设置；MCP 按需补充背景 | D05 |
 | confirmed | 素材通过日常解释、类比和例子酌情引入，助手可跳过；费曼与最近发展区方法指导帮助调整及自然反馈 | D05 / D06 |
 | confirmed | 根据用户历史回复及实际表现大致估计理解；删除遗忘曲线与相关预测要求 | M05 / Q10 |
@@ -229,9 +233,9 @@ SessionStart 恢复已保存的会话关联、episode、子图与列表，交付
 
 ### T02：项目结构与运行架构
 
-状态：`confirmed`。接入端为 `plugins/distillai/`，后台沿 `src/distillai/` 单包组织，本地常驻并调用独立 LLM API，纳入后期本地 LLM 服务。API key 由用户填写，供应商能力以实际配置验证。worker 管理调度、重试与提交，Hermes Agent 在任务副本中判断并维护文件；沙箱只限制写入，读取不限制。2026-10-12，用户考虑后续 trajectory 蒸馏 / RLVR，确认选择 Hermes SDK；同日 grill 第一轮重申通过 `AIAgent` API 执行，确认控制层 / Hook / MCP 均使用 Python、任务在独立执行子进程运行，控制层负责停止、校验和恢复。环境是否拆分按依赖兼容验证决定；详细契约及训练方向集中见 [统一 Design T05](design.md#technical-selection)。此前[三框架比较](../../../research/runtime/round-4.md)保留为历史依据，不再表示框架待选。
+状态：`confirmed`。接入端为 `plugins/distillai/`，后台沿 `src/distillai/` 单包组织，本地常驻并调用独立 LLM API，纳入后期本地 LLM 服务。API key 由用户填写，供应商能力以实际配置验证。worker 管理调度、重试与提交，Hermes Agent 在任务副本中判断并维护文件；2026-10-14 用户将 OS 写隔离延后，当前任务为普通独立进程。2026-10-12，用户考虑后续 trajectory 蒸馏 / RLVR，确认选择 Hermes SDK；同日 grill 第一轮重申通过 `AIAgent` API 执行，确认控制层 / Hook / MCP 均使用 Python、任务在独立执行子进程运行，控制层负责停止、校验和恢复。环境是否拆分按依赖兼容验证决定；详细契约及训练方向集中见 [统一 Design T05](design.md#technical-selection)。此前[三框架比较](../../../research/runtime/round-4.md)保留为历史依据，不再表示框架待选。
 
-2026-10-12，用户要求把前述项目结构记录到 [统一 Design：项目结构与启动组织](design.md#project-structure)。开发源码按 Hermes / DistillAI 并列组织，`hermes.py` 集中接入 AIAgent；`plugins/distillai/` 属于 Codex 接入插件。详细目录只在 Design 维护，具体文件名为实施参考；控制层与任务执行进程分离已确认，环境是否拆分、依赖兼容及写隔离仍待验证，尚未创建产品目录或安装依赖。
+2026-10-12，用户要求把前述项目结构记录到 [统一 Design：项目结构与启动组织](design.md#project-structure)。开发源码按 Hermes / DistillAI 并列组织，`hermes.py` 集中接入 AIAgent；`plugins/distillai/` 属于 Codex 接入插件。详细目录只在 Design 维护，具体文件名为实施参考；控制层与任务执行进程分离已确认，环境是否拆分、依赖兼容继续由 M01 验证；OS 写隔离移至后续 Issue，当前尚无产品实现。
 
 2026-10-09，用户在 [M01 Design](design.md) 中确认：后台 Agent 像 Codex 一样直接修改 episode、知识点、关系及用户模型等产品数据文件；程序继续维护原始材料、任务、校验和处理进度。原讨论中的“程序保存”分工据此细化，必要校验、来源追溯和失败不推进处理位置的方向继续有效。
 
@@ -269,7 +273,7 @@ SessionStart 恢复已保存的会话关联、episode、子图与列表，交付
 
 2026-10-08，对照 D01–D06、T01–T04、C01 与调研记录核对 Q01–Q16。Q 编号继续保留，但不再把已在正文回答的功能方向列为尚未讨论的问题。
 
-当前状态：Q01 / Q02 已解决，Q03 为 superseded，由 Q10 理解估计承接；Q04 的 Hermes `AIAgent` API、Python 控制层 / Hook / MCP、独立任务执行进程和只限写沙箱方向已确认，环境兼容与配套技术仍待验证 / 收敛。grill 第一轮确认 Q06 的程序评分工具往返、Q09 / Q10 的修订期间判断标记、Q12 的依赖变化触发准备，具体契约在统一 Design 维护。Q05–Q15 均有模块批准基线，其余新增接口与技术在统一 Design 收尾，Q16 待实测；其余已批准业务问题不重新打开。
+当前状态：Q01 / Q02 已解决，Q03 为 superseded，由 Q10 理解估计承接；Q04 的 Hermes `AIAgent` API、Python 控制层 / Hook / MCP、独立任务执行进程已确认；2026-10-14 OS 写隔离延后，环境兼容与其余配套技术仍待验证 / 收敛。grill 第一轮确认 Q06 的程序评分工具往返、Q09 / Q10 的修订期间判断标记、Q12 的依赖变化触发准备，具体契约在统一 Design 维护。Q05–Q15 均有模块批准基线，其余新增接口与技术在统一 Design 收尾，Q16 待实测；其余已批准业务问题不重新打开。
 
 grill 第二轮确认 Q08 / Q12 的可配置初始值：外扩每 60 分钟触发、每批最多 10 个已有知识点，子图每 3 次有效更新刷新；Q06 / Q15 确认旧版 M04 / M05 分析在运行前及提交前核对 episode 修订版本，被替代时停止发布并接续最新修订，保留历史且不自动合并旧结果。
 
@@ -282,7 +286,7 @@ grill 第三轮确认 Q04 的预算边界：最后一次允许的模型生成可
 - [x] **Q01｜初版范围**：D01–D06 及本地 Web 配置维护、历史与知识等信息浏览、在线编辑和来源回查；Web 复习范围已由 2026-10-10 用户明确纠正为 superseded。依据：[T01](#initial-scope)、[本地 Web](design.md#local-web-console)。
 - [x] **Q02｜验收方向**：功能完整、来源可靠、认知更新有效、日常体验合适，以真实使用场景检查。具体材料、步骤与评价方法在 Design / Plan 细化。依据：[T01 验收方向](#initial-scope)。
 - [x] **Q03｜原遗忘预测方案（superseded）**：2026-10-10 用户明确删除，改为基于历史回复大致估计理解，见 [M05](design.md#cognition-decisions)与 Q10；不再设计曲线、参数或数值校正规则。
-- [ ] **Q04｜后台运行方案**：本地常驻、独立 LLM API、任务副本、共用接口和恢复已确认；2026-10-12 用户确认 Hermes SDK / `AIAgent` API、Python 控制层 / Hook / MCP 及独立执行子进程，考虑后期本地 LLM 及 trajectory 蒸馏 / RLVR。剩余为依赖 / 环境兼容、配套技术、写隔离与模型兼容性验证；API key 由用户填写，搜索服务延后。框架选型不再开放，详见 [统一 Design T05](design.md#technical-selection)。
+- [ ] **Q04｜后台运行方案**：本地常驻、独立 LLM API、任务副本、共用接口和恢复已确认；2026-10-12 用户确认 Hermes SDK / `AIAgent` API、Python 控制层 / Hook / MCP 及独立执行子进程，考虑后期本地 LLM 及 trajectory 蒸馏 / RLVR。剩余为依赖 / 环境兼容、停树 / 提交和模型兼容性验证；OS 写隔离延至后续 Issue；API key 由用户填写，搜索服务延后。框架选型不再开放，详见 [统一 Design T05](design.md#technical-selection)。
 
 ### 部分已解决：Q05–Q15 的已有答案与剩余细化
 

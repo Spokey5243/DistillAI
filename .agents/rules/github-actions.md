@@ -5,7 +5,7 @@
 - 当前 CI 为 `ci.yml`：PR 验证、默认分支 Push 验证、手动验证；只有 `windows-tests` 一个 job，显示名 `Windows tests`。
 - PR 与 Push 执行同一套命令。采集使用 Windows `msvcrt`，runner 为 `windows-latest`，Python 明确固定为 3.13；未批准跨平台采集前不替换为 Ubuntu。
 - Actions 引用固定完整提交 SHA，并注明版本；升级时核对官方 action、runner 要求和实际 CI。
-- 当前测试零第三方依赖：`python tests/test_capture.py`、`python .codex/hooks/test_pre_push_guard.py`。不安装 Codex CLI 或模型 SDK。
+- 当前离线测试零第三方依赖：采集、Push Guard 及 `PYTHONPATH=src` 下的 `test_product_*.py` 标准库契约组。产品 SDK 依赖在 `uv.lock` 固定，当前 CI 不安装 Hermes / MCP / 模型 SDK，不调用模型或安装 Codex CLI；SDK 和真实 Hermes 组合保留本机验证证据。
 - 支持先发布开发规范、后发布采集插件：Push 检查始终运行；采集插件与测试均未发布时输出明确 notice，不能声称采集行为已通过。测试一旦发布必须执行并传播失败退出码；插件已发布但缺少采集测试时 CI 必须失败。
 - CI token 仅有 `contents: read`，checkout 不保留凭证；不在外部 PR 执行 `pull_request_target` + 不可信 head，不向测试交付个人会话或模型密钥。
 - CI 保留 PR head、base、测试合并 SHA；默认 PR checkout 测试合并结果，不把 `GITHUB_SHA` 当作 PR head。

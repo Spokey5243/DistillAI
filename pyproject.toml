@@ -1,0 +1,9 @@
+[project]
+name = "distillai"
+version = "0.1.0"
+description = "Personal knowledge and cognition maintenance"
+requires-python = ">=3.13"
+dependencies = ["mcp==2.0.0"]
+
+[tool.uv]
+package = false

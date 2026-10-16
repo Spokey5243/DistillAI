@@ -3,7 +3,7 @@ version: v0.1.0
 issue: 4
 branch: codex/4-initial-development
 workflow: exploratory
-status: draft
+status: approved
 decision_mode: user-approved
 ---
 
@@ -23,18 +23,18 @@ Modify：`storage.py` 注册 M05 字段 / 引用校验，`runtime.py` 维护直�
 
 ## Task 1：证据结构和字段权限
 
-- [ ] **Step 1：写结构 / 来源测试。** 合成 observation 包含用户表达 / 产物、任务、时间、来源、帮助；hypothesis 引用支持 / 反对观察和待区分问题；cognition 保留评估时间 / 文字 / 观察与假设引用。未知来源、只有助手正文却声称用户表现的来源、缺观察引用、同源重复与跨模块修改必须被检测；有用户正文只证明来源具备分析材料，不机械证明用户理解。
-- [ ] **Step 2：实现 M05 字段校验。** 沿知识 / 关系 example 的 observations / hypotheses / cognition / changes，不强制填满理解维度，不引入分数、固定等级、遗忘曲线。保留知识正文、关系端点 / 核查和知识来源；允许修改所属 cognition provenance / 变更原因。
-- [ ] **Step 3：实现跨对象假设。** `hypotheses/<id>.json` 保存受影响 knowledge / relation refs，关系只保存 hypothesis_refs；同文件观察用记录 ID + observation ID 定位，不为布局把全部观察拆文件。字段与引用经 M01 / M04 共同校验。
-- [ ] **Step 4：接入三类维护输入。** episode 分析始终读取原材料和 M04 结果，包括空；已关联普通会话反馈进入相同流程；Web 明确纠错使用独立 user_submission 版本和原因。未关联普通反馈不得伪造提交来源进入观察。
+- [x] **Step 1：写结构 / 来源测试。** 合成 observation 包含用户表达 / 产物、任务、时间、来源、帮助；hypothesis 引用支持 / 反对观察和待区分问题；cognition 保留评估时间 / 文字 / 观察与假设引用。未知来源、只有助手正文却声称用户表现的来源、缺观察引用、同源重复与跨模块修改必须被检测；有用户正文只证明来源具备分析材料，不机械证明用户理解。
+- [x] **Step 2：实现 M05 字段校验。** 沿知识 / 关系 example 的 observations / hypotheses / cognition / changes，不强制填满理解维度，不引入分数、固定等级、遗忘曲线。保留知识正文、关系端点 / 核查和知识来源；允许修改所属 cognition provenance / 变更原因。
+- [x] **Step 3：实现跨对象假设。** `hypotheses/<id>.json` 保存受影响 knowledge / relation refs，关系只保存 hypothesis_refs；同文件观察用记录 ID + observation ID 定位，不为布局把全部观察拆文件。字段与引用经 M01 / M04 共同校验。
+- [x] **Step 4：接入三类维护输入。** episode 分析始终读取原材料和 M04 结果，包括空；已关联普通会话反馈进入相同流程；Web 明确纠错使用独立 user_submission 版本和原因。未关联普通反馈不得伪造提交来源进入观察。
 
 ## Task 2：同源复用、修订等待与提交
 
-- [ ] **Step 1：实现来源身份复用。** 同一真实来源的同一表现只一份观察，MCP 补充帮助 / 纠错合并到已有证据；一来源可以支持多个对象但不计成多次独立表现。相同文本不同位置不自动同源，不新增跨位置重采去重系统。
-- [ ] **Step 2：发布 P04 并接入任务。** 用 P01 + P04、固定 episode / 反馈和相关记录；Agent 综合历史观察 / 支持反对证据，竞争解释可保持未决。最终输出实际 knowledge / relation / hypothesis refs 和 reason，版本由程序提交补齐，正常空结果允许成功。
-- [ ] **Step 3：接入当前修订等待解除。** 查询 / Web 展示历史判断和“依据已修订，等待重新分析”；新注入排除此依赖。M05 在运行和提交前复核 episode 最新修订，只有对应当前修订分析成功并提交才解除直接标记，包括有依据的无变更结果；失败 / 过时仍等待。不沿图传播或由模型清控制状态。
-- [ ] **Step 4：触发 M07 准备。** M05 相关记录或等待状态实际改变后，为直接依赖的开放 episode 登记准备；合并未运行重复待办、运行输入固定。不把正文变化自动当理解变化。
-- [ ] **Step 5：运行认知契约组。**
+- [x] **Step 1：实现来源身份复用。** 同一真实来源的同一表现只一份观察，MCP 补充帮助 / 纠错合并到已有证据；一来源可以支持多个对象但不计成多次独立表现。相同文本不同位置不自动同源，不新增跨位置重采去重系统。
+- [x] **Step 2：发布 P04 并接入任务。** 用 P01 + P04、固定 episode / 反馈和相关记录；Agent 综合历史观察 / 支持反对证据，竞争解释可保持未决。最终输出实际 knowledge / relation / hypothesis refs 和 reason，版本由程序提交补齐，正常空结果允许成功。
+- [x] **Step 3：接入当前修订等待解除。** 查询 / Web 展示历史判断和“依据已修订，等待重新分析”；新注入排除此依赖。M05 在运行和提交前复核 episode 最新修订，只有对应当前修订分析成功并提交才解除直接标记，包括有依据的无变更结果；失败 / 过时仍等待。不沿图传播或由模型清控制状态。
+- [x] **Step 4：触发 M07 准备。** M05 相关记录或等待状态实际改变后，为直接依赖的开放 episode 登记准备；合并未运行重复待办、运行输入固定。不把正文变化自动当理解变化。
+- [x] **Step 5：运行认知契约组。**
 
 ```powershell
 python -m unittest discover -s tests -p 'test_product_cognition.py' -v
@@ -44,7 +44,7 @@ python -m unittest discover -s tests -p 'test_product_cognition.py' -v
 
 ## Task 3：语义效果与自然反馈验收
 
-- [ ] **Step 1：建立合成对照材料。** 使用下表各组的用户 / 助手原文、真实测试队列来源、固定 Prompt / 配置；每组说明允许支持的范围，不以 fixture 的标准答案注入生产 Prompt。
+- [x] **Step 1：建立合成对照材料。** 使用下表各组的用户 / 助手原文、真实测试队列来源、固定 Prompt / 配置；每组说明允许支持的范围，不以 fixture 的标准答案注入生产 Prompt。
 
 | 材料 | 人工审阅标准 |
 | --- | --- |
@@ -63,4 +63,28 @@ python -m unittest discover -s tests -p 'test_product_cognition.py' -v
 
 永久组保护证据引用、角色 / 帮助结构、同源身份、字段权限和等待状态，不检验 LLM 文本是否逐字符合预设。现有测试没有产品认知覆盖；M01 提交恢复不重复。真实假设区分能力、Prompt 效果和日常中立交互是一次性人工验收。
 
-依赖 M01 / M02 / M04、M03 修订与 M07 来源关联。当前无业务偏差。本 Plan 为 draft，全部任务未执行。
+依赖 M01 / M02 / M04、M03 修订与 M07 来源关联。当前无业务偏差。2026-10-13 用户授权按当前 Plan 开始实施，本 Plan 已批准；完成状态按 checkbox 与执行记录核对。
+
+## 2026-10-15：证据、假设与 episode 分析接入
+
+已实现 cognition.py / P04，以及 observations、内联 / 跨对象 hypotheses、cognition 的结构、引用和字段归属校验。用户来源按原始物理位置判定；助手单独正文拒绝，助手帮助背景不增加一次表现，相同文本不同位置不合并。观察 ID 由控制层按用户原始位置分配并复用；竞争解释、支持 / 反对观察和待区分问题保留，理解为文字判断，不引入分数或固定等级。知识正文、关系端点 / 核查及内容 provenance 的修改被拒绝。
+
+M04 episode 分析包括正常空结果均登记 M05；执行固定原文和详情快照，实际变更引用由程序补版本。已关联 MCP 反馈可登记同一认知维护入口，来源未关联则保持等待，不伪造 user_submission。M05 实际修改直接依赖时接续 M07 准备。修订等待标记及解除、Web 明确纠错、完整自然反馈与语义对照验收仍未完成，因此本模块仅勾选 4 / 12 步。
+
+真实 AIAgent 配本机合成 provider 的 M03 → M04 → M05 链路取得观察 / 假设记录，用户仅提出请求时保留理解未知；机械验证不等同于模型语义质量验收。具体请求计数与最新验证见总 Plan；原文和探针留在忽略目录，不提交个人数据或凭证。
+
+### 2026-10-16：三类输入、等待解除与 Web 独立纠错
+
+Web 入口 POST /v1/cognition-corrections 接收单个知识 / 关系目标的 expected_version、performance、help、reason。程序保留独立 user_submission，观察 source 不伪造 episode_id；复用原始用户身份及新观察分配，原有表现和内容版本保留。任务仅维护选定对象的认知字段，拒绝正文改动和跨对象自动纠错。与 episode 分析、已关联 MCP 反馈共用 M05 流程；普通 MCP 来源仍须真实关联。
+
+程序等待状态与修订 / 当前 M05 分析各自同事务保存，Agent 不可编辑。只有固定 episode_ref 仍为当前版本且成功提交，才将直接等待标记转为 ready；有依据的无变更结果也可解除。失败 / 旧输入保持 waiting，解除状态触发 M07 直接依赖刷新且不增加材料计数。Web 和 MCP 附当前等待说明，旧判断正文和查询历史版本不改。
+
+认知、纠错和上下文契约已运行，实际 AIAgent 纠错链 11 次合成 provider 请求通过，其中独立认知提交 4 次。Task 1 Step 4、Task 2 Step 3–5 完成，当前 8 / 12；完整同源反馈和真实模型语义对照仍未验收。
+
+### 2026-10-16：反馈同源复用与新依据分析入口
+
+补充实际 MCP 反馈 → M05 的契约回归：修复登记范围漏带 cognition/reanalysis.json 导致程序清等待无法提交的问题。相同原始用户位置的两次不同请求复用一个 observation ID，补充帮助条件，未增加第二份表现；助手及未关联普通反馈仍不能伪造独立提交来源。
+
+显式最新依据重分析使用独立请求来源、client_request_id 幂等及最新 episode refs，登记新的 M04 → M05，原失败任务、固定输入和调用数保留。浏览器已验证原失败分析后新链成功并将等待改为 ready。7 组语义对照材料已准备于忽略目录 semantic-acceptance-data，真实队列范围、字节版本、当前 Prompt 和准备配置可回查；模型调用 0，未声称语义通过，未来实际执行固定自己的模型配置。
+
+Task 2 Step 1、Task 3 Step 1 完成，累计 10 / 12；剩余两步为真实模型对照与真实自然反馈闭环。

@@ -8,6 +8,10 @@
 
 ## 阅读入口
 
+2026-10-15 当前状态：统一 Design 修订 1 的 G1 已通过。M01 的存储、调度 / 配置 / 预算、Hermes 子进程和 HTTP / 单例已实施；78 项离线契约在两个解释器通过，真实 Library 的文件 / Shell 发布、503 恢复和第 16 / 17 次边界取得产品适配证据。Check / Serve / Stop 跨命令实测通过，Mcp / Web 动作和业务模块仍待对应后续步骤；整个 M01 和初版尚未完成。写隔离留待后续独立 Issue，尚未创建；下方旧阶段描述保留历史。
+
+2026-10-13，用户要求“现在开始按照plan执行”，当前统一 Design / 交接 / P01–P09、总 Plan 和 M01–M08 Plan 均获实施批准。当前进入 M01 Task 1，先验证 Hermes PM 环境与 Windows 运行边界；下述历史段落保留当时状态，技术候选和搜索方法继续按 G1–G3 收敛。
+
 grill 第二轮已确认：子图每 3 次有效更新刷新，外扩每 60 分钟触发、每批最多 10 个已有知识点，均为可配置初始值；旧版 M04 / M05 分析在运行前及提交前核对 episode 修订版本，被替代的输入不再发布当前结果，保留历史并接续最新修订。其余交接、配套技术及 Prompt 整体继续审阅。
 
 grill 第三轮已确认：最后一次允许的模型生成可完成、校验并提交，仍需超额生成才预算失败；明确 ID / 名称查询由程序返回，自然语言 MCP 查询通过 Hermes `AIAgent` 的只读任务执行，先子图 / 上下文、必要时全图。查询预算与历史复用 M01；P06 增加 query 模式，Prompt 组数不变。
@@ -32,16 +36,18 @@ grill 第四轮已确认：当前轮注入最高优先、MCP 只读检索其次�
 
 | 模块 | 当前 Design | 合并来源快照 | Plan |
 | --- | --- | --- | --- |
-| M01 | [后台运行、配置与持久化](design.md#runtime-contracts) | [原 Design](modules/01-runtime/design.md)、[技术方案](modules/01-runtime/technical-proposal.md) | [草案](modules/01-runtime/plan.md) |
-| M02 | [Codex 采集与材料交付](design.md#data-capture) | [原 Design](modules/02-capture/design.md) | [草案](modules/02-capture/plan.md) |
-| M03 | [episode 构建与维护](design.md#episode-model) | [原 Design](modules/03-episode/design.md) | [草案](modules/03-episode/plan.md) |
-| M04 | [知识点、关系与图索引](design.md#cognitive-map-model) | [原 Design](modules/04-knowledge/design.md) | [草案](modules/04-knowledge/plan.md) |
-| M05 | [用户理解估计与反馈](design.md#cognition-decisions) | [原 Design](modules/05-cognition/design.md) | [草案](modules/05-cognition/plan.md) |
-| M06 | [外部搜索与知识扩充](design.md#knowledge-expansion) | [原 Design](modules/06-expansion/design.md) | [草案](modules/06-expansion/plan.md) |
-| M07 | [检索、注入与 MCP 接入](design.md#context-retrieval) | [原 Design](modules/07-context/design.md) | [草案](modules/07-context/plan.md) |
-| M08 | [本地 Web、配置维护与在线编辑](design.md#local-web-console) | [原 Design](modules/08-web/design.md) | [草案](modules/08-web/plan.md) |
+| M01 | [后台运行、配置与持久化](design.md#runtime-contracts) | [原 Design](modules/01-runtime/design.md)、[技术方案](modules/01-runtime/technical-proposal.md) | [已批准，执行中](modules/01-runtime/plan.md) |
+| M02 | [Codex 采集与材料交付](design.md#data-capture) | [原 Design](modules/02-capture/design.md) | [已批准](modules/02-capture/plan.md) |
+| M03 | [episode 构建与维护](design.md#episode-model) | [原 Design](modules/03-episode/design.md) | [已批准](modules/03-episode/plan.md) |
+| M04 | [知识点、关系与图索引](design.md#cognitive-map-model) | [原 Design](modules/04-knowledge/design.md) | [已批准](modules/04-knowledge/plan.md) |
+| M05 | [用户理解估计与反馈](design.md#cognition-decisions) | [原 Design](modules/05-cognition/design.md) | [已批准](modules/05-cognition/plan.md) |
+| M06 | [外部搜索与知识扩充](design.md#knowledge-expansion) | [原 Design](modules/06-expansion/design.md) | [已批准](modules/06-expansion/plan.md) |
+| M07 | [检索、注入与 MCP 接入](design.md#context-retrieval) | [原 Design](modules/07-context/design.md) | [已批准](modules/07-context/plan.md) |
+| M08 | [本地 Web、配置维护与在线编辑](design.md#local-web-console) | [原 Design](modules/08-web/design.md) | [已实施](modules/08-web/plan.md) |
 
 ## 依赖与推进顺序
+
+执行中需要用户补充的信息和外部实测条件集中在[执行待办](pending.md)；用户未及时回复时继续不依赖它们的实施。
 
 按用户 2026-10-13 的要求，先完成总 Plan 与模块 Plan 草案；实施前仍核对新增 Design / Prompt 和对应模块 Plan 的批准范围。Plan 在 `modules/<模块>/plan.md` 保存，引用统一 Design 的实际依赖契约；仍归属 Issue #4 与当前分支。运行条件、Desktop 生命周期和搜索接入分别在总 Plan 的 G1–G3 验证 / 收敛，未取得证据不假定通过。
 
@@ -61,3 +67,11 @@ grill 第四轮已确认：当前轮注入最高优先、MCP 只读检索其次�
 | 页面交互与 Web 请求反馈 | M08 | 本地用户，业务规则复用归属模块 |
 
 一个字段、状态或业务规则只由归属模块维护；跨模块变化同步实际依赖方及 C01 受影响步骤。沿用 [Spec 工作流](../../README.md)和仓库 SDLC 规则。
+
+2026-10-15 继续推进 M02：产品正文 / 工具采集、队列 / cursor、物理来源读取、轻量通知和可靠扫描已接入。M02 12 / 16 步完成，全计划累计 32 / 140；M03 处理位置、M07 实际工具前缀和真实 Desktop 仍待接续。真实 AIAgent 的来源工具往返及其余六个合成场景共 43 次请求通过。G2 测试插件已准备为本机可用条目，尚未安装 / 启用，不能视为 Desktop 验证通过。当前状态以 [总 Plan 执行记录](plan.md#执行记录与-plan-状态)及模块 checkbox 为准。
+
+同日后续进度：M03 普通材料归属 / 缓冲 / 程序评分 / 原子处理位置，M04 详情约束 / 字段权限 / 名称多关系图 / 历史与一跳查询 / episode 分析已接通；累计 44 / 140 步，98 项离线契约在两个解释器通过。真实 AIAgent 的 M03 → M04 合成链路 17 次生成通过，M04 空结果仍交 M05。G2、生命周期收尾、修订等待、三类维护的外扩 / 用户编辑、M05 / M07 / Web 与语义质量仍按各 Plan 接续，模块不标 implemented。
+
+同日继续：M05 的来源身份 / 字段权限 / 假设 / 定性判断和 episode 分析已实现；M07 准备 / 两列表 / 周期与直接依赖刷新、实际读取版本的只读查询、独立调用取消、无工具筛选 / compact 快照及反馈待关联已接入，累计 56 / 140 步完成。120 项产品契约在两个解释器通过，实际 SDK / AIAgent 的准备 / 查询 / 筛选 / 取消探针共 9 次请求。当前 MCP 要求先通过 Serve 启动后台；自动冷启动、真实 Desktop、修订等待解除、外部搜索与 Web 尚未完成。M06 搜索方案已按 Plan 发起选择，未擅自配置供应商或开启周期。
+
+最新进度（2026-10-16）：累计 **112 / 140**；两个解释器各 **160 项产品测试通过**。M01 25 / 25、M08 16 / 16 的模块 Plan 已实施；M03 新材料直接修订、M05 同源反馈、M07 候选代次校验及 Web 关联回查 / 新依据重分析已接通。真实 AIAgent 新材料修订链 12 请求、真实 Tavily 外扩到 M07 和用户编辑链 14 请求、SDK / AIAgent 上下文链 9 请求通过。剩余真实 Desktop、生命周期和模型语义验收见[执行待办](pending.md)，整体仍为 approved / 执行中。

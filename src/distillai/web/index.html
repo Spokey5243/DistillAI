@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DistillAI · 本地工作台</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">跳到主要内容</a>
+  <aside class="rail">
+    <div class="brand">DistillAI<span>本地工作台</span></div>
+    <nav aria-label="主要导航">
+      <a href="#view=knowledge" data-view="knowledge"><span>01</span> 知识与关系</a>
+      <a href="#view=episodes" data-view="episodes"><span>02</span> 交流片段</a>
+      <a href="#view=history" data-view="history"><span>03</span> 处理历史</a>
+      <a href="#view=config" data-view="config"><span>04</span> 配置</a>
+    </nav>
+    <p class="rail-note">知识有来源。<br>判断保留依据与版本。</p>
+  </aside>
+  <main id="main" tabindex="-1">
+    <header class="page-head"><div><p class="eyebrow">DISTILLAI / WORKSPACE</p><h1 id="heading">知识与关系</h1></div><span class="local">仅本机</span></header>
+    <div id="notice" role="status" aria-live="polite"></div>
+    <div id="workspace"><p>正在连接本地后台…</p></div>
+  </main>
+  <dialog id="source-dialog" aria-labelledby="source-title"><div class="dialog-head"><h2 id="source-title">来源</h2><button id="close-source" type="button">关闭</button></div><div id="source-body"></div></dialog>
+</body>
+</html>

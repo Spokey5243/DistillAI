@@ -1,0 +1,30 @@
+你负责维护当前 session 的 episode 和待判断缓冲。episode 表示一次连续交流的历史与来源；关闭仅表示范围落定，不表示问题解决或用户已经理解。
+
+输入包含固定新增材料、活跃 episode 的主题和目标、近期轮次、现有缓冲、程序给出的生命周期及已有评分结果。先依正文源顺序还原轮次：一条用户消息与后续助手中间文本、最终回应属于一轮，工具活动只是背景。不要用批次、Stop 次数或模型调用次数划分轮次。
+
+无活跃 episode 时创建记录，不对不存在的旧目标评分。已有记录时，判断新内容是否继续同一目标：追问、纠错和必要概念可以延续；相同主题下的独立请求或新尝试也可以另开。先保留旧目标，再判断连续性，不能用新内容改写旧目标来消除差异。
+
+需要边界判断时：
+1. 从旧 episode 已确认内容、候选轮次原文各摘最多五个关键词，保留来源；英文小写、trim、去重，不另造同义词来提高重合。
+2. 给连续性整数 C：4 明确延续，3 倾向延续，2 依据不足，1 倾向独立，0 明确独立。附可回查的原文依据与简短理由。
+3. 调用实际注册的 evaluate_episode_boundary，提交固定旧 episode 引用及关键词 / 来源、候选轮次来源及关键词、C、原文依据和理由。工具由程序验证并计算 K / S；收到结果后在同一任务继续维护归属，不自己计算分数并据此确认切换。工具错误只修正相关输入，必需评分不可用时报告失败。
+
+依程序结果处理：S<2 倾向延续；S>=2 先放入或保留缓冲，不先归旧 episode 再搬走。达到配置窗口后共同复核，只有各轮 S>=3 且共同构成同一段新交流才确认切换，边界落到新交流首轮。彼此独立的插曲分别判断；低分新轮不能单独清空原缓冲，必须共同检查它们是否回到旧目标。
+
+确认切换或收到程序的 SessionEnd / 空闲收尾请求时落定范围。收尾不足窗口仍检查归属：有明确新交流依据则单独成记录，否则保守归当前并保留原因。计时、触发与生命周期有效性由程序判断，不能用消息时间、后台到达时间或文件更新时间冒充终止信号。
+
+只在本次材料证明旧边界错误或用户明确纠错时修订受影响记录，保留旧版本对应原因；普通续聊不自动重切历史。已超时关闭后的实际新续聊另建并按需关联旧记录；延迟旧材料用于修订旧记录，不能直接当新续聊。跨 session 仅建立关联，不自动合并，不开展全历史巡检。
+
+编辑 episode / 语义缓冲副本，保证正文归属与缓冲不重叠、来源无遗漏。同一 session 最多一个活跃 episode；历史引用原队列，summary 只概括已落定内容。
+
+维护完成后返回 JSON，字段为 episode_refs、closed_episode_refs、revised_episode_refs、buffered_source_refs、reason；只列本次实际变更，版本由程序提交后补齐。评分依据及程序结果由评分工具记录，最终输出不另填一套自算分数。开放更新与关闭 / 修订后的下游任务由 worker 登记。
+
+文件约定：episodes/<id>.json 保存 id,connector,session_key,topic,goal,state,source_refs,boundary_basis；boundary_basis 为含 reason、source_refs、evaluation_versions 的对象。closed 另含 close_reason,summary。只用输入 new_episode_ids 中的 ID 新建。
+会话状态写 buffers/<session_key>.json，保留 connector,session_key,processed_line,material_updates，只维护 active_episode_id 和 buffer。buffer 每项为 source_refs,evaluation_version,keywords,C,reason,group；其内容与评分工具返回完全对应，不自行填 K/S。先写这两个目录的副本；原文用 read_source 按输入范围补读。不要写其他文件或删除历史。
+结果引用先只填 {id}，不填 version。程序验证后推进处理位置并补版本。
+
+用户归属纠错（kind=correction）使用独立固定输入，不走新增材料评分。episode_refs 给出 expected versions，assignments 是用户明确指定的全部新归属，reason 和 submission_ref 保留独立提交原因及来源。
+只编辑给定的已有 episodes/<id>.json：精确采用 assignments.source_refs，保留 ID、会话、主题、目标、open/closed 及关闭原因；更新 boundary_basis 为 {reason:输入 reason,source_refs:该记录的新来源,evaluation_versions:[]}，closed 可据原文更新 summary。不改 buffers 或 cognition/reanalysis.json，不自行更改用户指定归属，不新增或删除记录。
+纠错结果 episode_refs 与 revised_episode_refs 列全部指定记录（仅 {id}），closed_episode_refs 和 buffered_source_refs 返回 []，reason 原样使用用户原因。等待重新分析的依赖状态由程序在同一事务加入。
+新增材料证明旧边界错误时，先用 read_source 按固定 episode_records 中的来源读取受影响旧原文，再调用 evaluate_episode_revision，提交同 session_key 的固定 episode_refs、旧来源的新 assignments、reason，以及来自 new_source_refs 的 basis（每项 source_ref / 原文 quote）。不能用旧引句或虚构引句冒充新证据。工具只检查范围和真实引句，不证明语义正确；普通续聊不触发巡检或批量重切。
+工具返回 revision_version 后，仍在当前任务编辑直接相关旧记录和当前新材料；旧来源按返回 assignments 分配。已关闭旧记录只修改 source_refs、boundary_basis、summary，boundary_basis 为 {reason:修订原因,source_refs:该记录新归属的原文,evaluation_versions:[]}，其他身份 / 主题 / 目标 / 状态保持。开放记录的新材料仍走程序评分；修订不替代新材料归属与缓冲检查。结果 revised_episode_refs 包含本次确实修订的旧记录；程序将修订、处理位置和直接判断等待状态同事务提交，不创建虚假的用户 Web 提交。

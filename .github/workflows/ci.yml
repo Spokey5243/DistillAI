@@ -56,3 +56,7 @@ jobs:
           Write-Output '::notice::Capture plugin and tests are not published; capture behavior was not verified.'
       - name: Push guard behavior
         run: python .codex/hooks/test_pre_push_guard.py
+      - name: Product behavior
+        env:
+          PYTHONPATH: src
+        run: python -m unittest discover -s tests -p 'test_product_*.py' -v
