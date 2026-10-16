@@ -5,7 +5,7 @@ branch: codex/4-initial-development
 workflow: exploratory
 status: approved
 decision_mode: user-approved
-material_revision: 1
+material_revision: 2
 ---
 
 # DistillAI 初版统一 Design
@@ -949,3 +949,9 @@ M04 新建 ID 由任务授权的 new_record_id 生成；既有 ID 保留。关�
 Web 固定静态路由为 `/`、`/app.js`、`/styles.css`，浏览器经单次 `/web/bootstrap` 交换后访问同源资源；来源只能按引用解析。列表与历史使用绑定筛选的 HMAC 游标；详情传 version 时只读取该不可变版本。任务历史按白名单字段或实际生成 attempt 读取 `/v1/tasks/<id>/artifacts`，不提供任意版本文件读取。配置中的两类 api_key 空字符串保留、null 显式清除私有凭证；`search_environment_configured` 只报告启动进程是否存在环境凭证。该映射落实既定配置 / 编辑 / 引用要求；搜索选择记录于 T06，material_revision 仍为 1。
 
 2026-10-16 Web / 恢复绑定：`GET /v1/related` 只接受 record_id 或 episode_id 之一及 cursor / limit，按实际 RecordRefs 和提交版本建立关联，历史 context / expansion 从不可变内容读回；不按模型文字中的 ID 匹配。`POST /v1/reanalysis-requests` 接收 client_request_id、record_id、reason，为仍等待的直接依据登记新的固定当前 episode 版本 M04 → M05；同请求复用，原失败任务和预算不变，不自动合并原副本。筛选提交前另逐项复核当前候选 revision / 文字 / 条件 / refs，候选本身变更时只排除该条。
+
+### Design 实质修订 2：采用成熟框架与产品依赖环境
+
+2026-10-16，用户明确要求删除 AGENTS.md 的新增框架 / 依赖限制，重构重复实现的通用能力并接续 Plan。决策方式：用户确认。本机 API 与同源 Web 改用 FastAPI / Uvicorn 的路由、请求 / 响应、异常和 ASGI 生命周期；模型转发使用 HTTPX 的 HTTP / 流式传输。项目依赖由 uv 管理，产品控制 / MCP / Web 在项目环境运行，Hermes AIAgent 任务仍使用已验证的 PM 环境，保持版本和安装归属。
+
+删除替代掉的 HTTP 协议 / 路由轮子，不以框架包裹原 BaseHTTPRequestHandler；通用框架不代替任务预算、来源身份、不可变记录、冲突提交和恢复这些业务规则。既有授权、Host / Origin / CSRF、一次性浏览器入口、固定模型目标和完整进程树停止必须继续验证。Plan 受影响：总 Plan R01、M01 HTTP / 启动、M07 MCP 入口、M08 API、CI 和本地依赖安装。原标准库优先表述作为历史保留，当前以本修订和总 Plan 技术基线为准。
