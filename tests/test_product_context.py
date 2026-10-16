@@ -135,11 +135,33 @@ class ContextTests(unittest.TestCase):
         self.assertEqual(completed["status"], "succeeded", completed["error"])
         first = context.selection_status(runtime, started["round_key"])
         self.assertEqual(first["selected"][0]["text"], candidate["text"])
+        def broken_writer(value):
+            raise OSError("synthetic output failure")
+        self.assertFalse(context.write_selection(runtime, started["round_key"], broken_writer))
+        self.assertNotIn("output_phase", context.selection_status(runtime, started["round_key"]))
+        output = []
+        self.assertFalse(context.write_selection(runtime, started["round_key"], output.append, compact=True))
+        self.assertTrue(context.write_selection(runtime, started["round_key"], output.append))
+        written = context.selection_status(runtime, started["round_key"])
+        self.assertEqual(written["output_phase"], "additional_context_written")
+        self.assertNotIn("platform_received", written)
+        first_payload = json.loads(output[-1].split("\n\n", 1)[1])
+        self.assertEqual(first_payload["items"], first["selected"])
         atomic_json(self.store.home / "knowledge" / (A + ".json"), {**self.record, "content": {"summary": "changed", "source_refs": [self.ref]}})
+        self.assertFalse(context.write_selection(runtime, started["round_key"], output.append))
+        for _ in range(2):
+            self.assertTrue(context.write_selection(runtime, started["round_key"], output.append, compact=True))
+            restored = json.loads(output[-1].split("\n\n", 1)[1])
+            self.assertEqual(restored["delivery_type"], "compact_restore")
+            self.assertEqual(restored["items"], first_payload["items"])
+            self.assertEqual(restored["selection_prompt_version"], first_payload["selection_prompt_version"])
+            self.assertEqual(restored["request_version"], first_payload["request_version"])
         self.assertEqual(context.restore_selection(runtime, "synthetic")["selected"], first["selected"])
         self.assertEqual(context.restore_selection(runtime, "synthetic")["selected"], first["selected"])
         self.assertEqual(len(runtime.tasks()), 1)
         self.assertEqual(context.prepare_result(runtime, task, {"selected_ids": [candidate["id"]], "reason": "now stale"})["selected_ids"], [])
+        context.start_selection(runtime, "synthetic", "next prompt without candidates")
+        self.assertFalse(context.write_selection(runtime, started["round_key"], output.append, compact=True))
 
     def test_prepare_publishes_stable_candidate_revisions_and_waits_for_three_new_updates(self):
         text = ["Use the existing synthetic connection"]

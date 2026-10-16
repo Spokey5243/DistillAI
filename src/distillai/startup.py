@@ -188,6 +188,8 @@ def run_service(runtime, *, material_register=None):
                 runtime.discover_materials(register=material_register)
                 from .context import reconcile_feedback
                 reconcile_feedback(runtime)
+                from .lifecycle import tick as lifecycle_tick
+                lifecycle_tick(runtime)
                 from .expansion import tick
                 tick(runtime)
                 runtime.dispatch()

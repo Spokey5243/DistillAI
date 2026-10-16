@@ -165,6 +165,18 @@ def register_material(runtime, ref):
         return runtime.register_increment(ref, scope=scope, prompt=prompt)
 
 
+def register_close(runtime, key, *, at=None):
+    from .lifecycle import closing_signal
+    with runtime.store.locked():
+        signal = closing_signal(runtime, key, at=at)
+        current = state(runtime.store.home, key)
+        if signal is None or current["active_episode_id"] is None or current["processed_line"] != signal["line_end"]:
+            return None
+        scope = {"root": str(runtime.store.home), "paths": ["episodes", "buffers/" + key + ".json", "cognition/reanalysis.json"]}
+        prompt = (Path(__file__).parent / "prompts" / "episode.txt").read_text(encoding="utf-8")
+        return runtime.register("episode", {"closing": signal}, "closing", scope=scope, prompt=prompt)
+
+
 def execution_task(runtime, task):
     if task["kind"] == "correction":
         return _correction_execution(runtime, task)
@@ -173,14 +185,20 @@ def execution_task(runtime, task):
         if saved.get("execution_input_version"):
             inputs = json.loads(runtime.store.read_version(saved["execution_input_version"]))
         else:
-            refs = task["inputs"]["source_refs"]
-            if len(refs) != 1:
-                raise ValueError("Material tasks require one contiguous increment")
-            ref = refs[0]
-            read_source(runtime.store.home, ref)
-            key, end = ref["session_key"], ref["line_end"]
+            closing = task["inputs"].get("closing")
+            refs = [] if closing else task["inputs"]["source_refs"]
+            if closing:
+                key, end = closing["session_key"], closing["line_end"]
+            else:
+                if len(refs) != 1:
+                    raise ValueError("Material tasks require one contiguous increment")
+                ref = refs[0]
+                read_source(runtime.store.home, ref)
+                key, end = ref["session_key"], ref["line_end"]
             current = state(task["workspace"], key)
-            if ref["line_start"] != current["processed_line"] + 1:
+            if closing and (current["processed_line"] != end or current["active_episode_id"] is None):
+                raise ConflictError("Closing requires the fixed known material and an open episode")
+            if not closing and ref["line_start"] != current["processed_line"] + 1:
                 raise ConflictError("Earlier session material has not committed")
             records = {}
             for name, info in task["baseline"].items():
@@ -208,6 +226,8 @@ def execution_task(runtime, task):
                       "turns": rounds, "episode_records": records, "line_end": end,
                       "new_episode_ids": [uuid.uuid4().hex for _ in range(len(rounds) + 1)],
                       "boundary_window": task["config"]["values"]["episode"]["switch_buffer_turns"]}
+            if closing:
+                inputs["closing"] = closing
             saved["execution_input_version"] = runtime.store.put_version(_json(inputs).encode("utf-8"))
             runtime._save(saved)
         if saved.pop("episode_prepared", None) is not None:
@@ -260,7 +280,7 @@ def read_episode_source(runtime, task_id, args):
 def evaluate_revision(runtime, task_id, args):
     with runtime.store.locked():
         task = runtime._live(task_id)
-        if task["kind"] != "episode" or task["status"] != "running" or not isinstance(args, dict) or set(args) != {"session_key", "episode_refs", "assignments", "reason", "basis"}:
+        if task["kind"] != "episode" or task["trigger"] != "material" or task["status"] != "running" or not isinstance(args, dict) or set(args) != {"session_key", "episode_refs", "assignments", "reason", "basis"}:
             raise ValueError("Revision scope requires a running material task and new original evidence")
         inputs = _execution(runtime, task)
         _record_refs(args["episode_refs"])
@@ -316,16 +336,17 @@ def _evaluate_versions(runtime, task, inputs):
 def validate_task(runtime, task, result):
     if task["kind"] == "correction":
         return _validate_correction(runtime, task, result)
-    if task["kind"] != "episode" or task["trigger"] != "material":
+    if task["kind"] != "episode" or task["trigger"] not in {"material", "closing"}:
         raise ValueError("Unsupported episode task")
     if result is None:
-        for ref in task["inputs"]["source_refs"]:
+        for ref in task["inputs"].get("source_refs", []):
             read_source(runtime.store.home, ref)
         return
     fields = {"episode_refs", "closed_episode_refs", "revised_episode_refs", "buffered_source_refs", "reason"}
     if not isinstance(result, dict) or set(result) != fields or not isinstance(result["reason"], str) or not result["reason"].strip():
         raise ValueError("Invalid episode result")
     inputs = _execution(runtime, task)
+    closing = "closing" in inputs
     key, end = inputs["session_key"], inputs["line_end"]
     all_rows = read_source(runtime.store.home, {"connector": "codex", "session_key": key, "line_start": 1, "line_end": end})["rows"]
     body = {number for number, row in enumerate(all_rows, 1) if row["role"] != "tool"}
@@ -400,6 +421,8 @@ def validate_task(runtime, task, result):
     active = [identifier for identifier, record in records.items() if record["state"] == "open"]
     if len(active) > 1 or current["active_episode_id"] != (active[0] if active else None):
         raise ValueError("Session must identify its only open episode")
+    if closing and (active or current["buffer"]):
+        raise ValueError("Closing must settle the whole fixed buffer and leave no active episode")
     buffered = []
     for item in current["buffer"]:
         if not isinstance(item, dict) or set(item) != {"source_refs", "evaluation_version", "keywords", "C", "reason", "group"}:
@@ -424,7 +447,7 @@ def validate_task(runtime, task, result):
     if old_active:
         old_id = old_active["id"]
         newly_created = set(records) - set(old_records)
-        if newly_created - {current["active_episode_id"]}:
+        if not closing and newly_created - {current["active_episode_id"]}:
             raise ValueError("Unconfirmed independent exchanges must remain buffered")
         if records[old_id]["goal"] != inputs["active_episode"]["goal"]:
             raise ValueError("Ordinary new material cannot rewrite the old goal")
@@ -445,12 +468,12 @@ def validate_task(runtime, task, result):
             candidate = latest.get(_json(turn["source_refs"]))
             if candidate is None:
                 raise ValueError("New user turns require program boundary evaluation")
-            if ownership[min(positions)] == old_id and candidate["S"] >= 2:
+            if not closing and ownership[min(positions)] == old_id and candidate["S"] >= 2:
                 raise ValueError("An uncertain new turn must remain buffered until confirmed")
-        if current["active_episode_id"] != old_id:
-            new_id = current["active_episode_id"]
-            if new_id is None or records[old_id]["state"] != "closed":
+        if closing or current["active_episode_id"] != old_id:
+            if records[old_id]["state"] != "closed" or not closing and current["active_episode_id"] is None:
                 raise ValueError("Material tasks may close only by switching to another episode")
+        for new_id in newly_created:
             selected = set(_positions(records[new_id]["source_refs"], key, limit=end)) & body
             approved = []
             for version in records[new_id]["boundary_basis"]["evaluation_versions"]:
@@ -461,7 +484,7 @@ def validate_task(runtime, task, result):
                     if positions.issubset(selected):
                         approved.append(candidate)
             unique = {_json(candidate["source_refs"]): candidate for candidate in approved}
-            if (len(unique) < inputs["boundary_window"] or any(item["S"] < 3 for item in unique.values())
+            if (not unique or not closing and (len(unique) < inputs["boundary_window"] or any(item["S"] < 3 for item in unique.values()))
                     or len({item["group"] for item in unique.values()}) != 1
                     or set().union(*(set(_positions(item["source_refs"], key, limit=end)) for item in unique.values())) != selected):
                 raise ValueError("Switch requires a whole window with one shared new exchange")
@@ -509,7 +532,9 @@ def prepare_result(runtime, task, result):
     current = state(task["workspace"], inputs["session_key"])
     current["processed_line"] = inputs["line_end"]
     active = current["active_episode_id"]
-    if active != inputs["state"]["active_episode_id"]:
+    if "closing" in inputs:
+        current["material_updates"] = inputs["state"]["material_updates"]
+    elif active != inputs["state"]["active_episode_id"]:
         current["material_updates"] = 1
     else:
         record = json.loads((Path(task["workspace"]) / "episodes" / (active + ".json")).read_text(encoding="utf-8"))

@@ -6,7 +6,7 @@ import re
 import uuid
 
 from .knowledge import KnowledgeIndex
-from .sources import queue_path, read_source, scan_queue, contains
+from .sources import queue_path, read_source, scan_queue, contains, now
 from .storage import atomic_json, ConflictError, _identifier, _hash
 
 
@@ -536,7 +536,8 @@ def start_selection(runtime, session_key, prompt):
     with runtime.store.locked():
         round_key = uuid.uuid4().hex
         saved = {"round_key": round_key, "session_key": session_key, "status": "prepared", "selected": [],
-                 "reason": "No prepared candidates", "restore_attempts": 0}
+                 "reason": "No prepared candidates", "restore_attempts": 0,
+                 "request_version": runtime.store.put_version(prompt.encode("utf-8"))}
         prepared_context = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
         if prepared_context.get("episode_ref"):
             saved["episode_ref"] = prepared_context["episode_ref"]
@@ -579,6 +580,47 @@ def restore_selection(runtime, session_key):
         saved["restore_attempts"] += 1
         atomic_json(_selection_path(runtime, round_key), saved)
         return saved
+
+
+def write_selection(runtime, round_key, writer, *, compact=False):
+    """writer returns only after writing additionalContext; this cannot confirm platform receipt."""
+    with runtime.store.locked():
+        saved = selection_status(runtime, round_key)
+        if saved["status"] != "prepared" or not saved["selected"]:
+            return False
+        if compact and "emitted_items" not in saved:
+            return False
+        pointer = runtime.store.home / "events/selections" / (saved["session_key"] + ".current")
+        if not pointer.exists() or json.loads(pointer.read_text(encoding="utf-8"))["round_key"] != round_key:
+            return False
+        selected = saved.get("emitted_items", saved["selected"])
+        if not compact:
+            path = _context_path(runtime, saved["session_key"])
+            current = {item["id"]: item for item in json.loads(path.read_text(encoding="utf-8")).get("injection_candidates", [])} if path.exists() else {}
+            versions = _record_versions(runtime)
+            selected = [item for item in selected if item["id"] in current and all(
+                item.get(field) == current[item["id"]].get(field) for field in ("revision", "text", "conditions", "record_refs", "reanalysis_versions"))
+                and _candidate_current(runtime, item, versions)]
+        if not selected:
+            return False
+        prompt = (runtime.store.read_version(saved["injection_prompt_version"]) if compact else
+                  (Path(__file__).parent / "prompts/injection.txt").read_bytes())
+        payload = {"delivery_type": "compact_restore" if compact else "current_round", "round_key": round_key,
+                   "selection_prompt_version": saved["prompt_version"], "request_version": saved["request_version"], "items": selected}
+        text = prompt.decode("utf-8").strip() + "\n\n" + json.dumps(payload, ensure_ascii=False)
+        attempt = {"delivery_type": payload["delivery_type"], "prompt_version": runtime.store.put_version(prompt),
+                   "context_version": runtime.store.put_version(text.encode("utf-8")), "at": now()}
+        try:
+            writer(text)
+        except Exception as error:
+            runtime.store.event({"event": "selection_output_failed", "round_key": round_key, "code": type(error).__name__})
+            return False
+        saved["output_phase"] = "additional_context_written"
+        saved.setdefault("emitted_items", deepcopy(selected))
+        saved.setdefault("injection_prompt_version", attempt["prompt_version"])
+        saved.setdefault("outputs", []).append(attempt)
+        atomic_json(_selection_path(runtime, round_key), saved)
+        return True
 
 
 def record_request(runtime, session_key, prompt):

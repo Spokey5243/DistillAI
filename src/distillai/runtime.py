@@ -191,6 +191,9 @@ class Runtime:
             raise CancelledError("Workspace is no longer authorized")
 
     def _check_input(self, task):
+        if task["kind"] == "episode" and task["trigger"] == "closing":
+            from .lifecycle import check_closing
+            check_closing(self, task)
         if task["kind"] not in {"knowledge", "cognition", "context", "expansion", "correction"}:
             return
         if task["kind"] == "knowledge" and task["inputs"].get("user_edit"):
@@ -218,6 +221,11 @@ class Runtime:
     @contextmanager
     def _input_guard(self, task):
         with ExitStack() as held:
+            if task["kind"] == "episode" and task["trigger"] == "closing":
+                from .sources import queue_path
+                path = queue_path(self.store.home, task["inputs"]["closing"]["session_key"])
+                parent = held.enter_context(pinned_path(path))
+                held.enter_context(FileHandle(path, parent=parent))
             if task["kind"] in {"knowledge", "cognition", "context"}:
                 for ref in task["inputs"].get("episode_refs", []):
                     path = self.store.home / "episodes" / (_identifier(ref["id"]) + ".json")
