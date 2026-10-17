@@ -1000,3 +1000,9 @@ M03 生命周期持久记录校验事件种类、session、严格整数计数、
 真实 PowerShell → venv launcher → FastMCP stdio 发现嵌套 Job 例外：CREATE_BREAKAWAY_FROM_JOB 返回成功，后台仍属于 SDK 的外层 Job，stdio 结束会杀死它并留下实例文件。落实原有“不能把非独立进程当常驻”的要求：后台先 CREATE_SUSPENDED，经公开 IsProcessInJob 确认不属于任何 Job 后，复用既有 NtResumeProcess 窄适配恢复；无法证明独立或恢复失败时，在运行产品入口前终止并回收该子进程，返回既定无法独立启动错误。普通任务仍先入自己的 Job 再恢复，不要求脱离 Job，可靠停树规则不变。
 
 此处采取保守证明：受控执行器中同样可能拒绝自动后台启动；可在其进程树之外的普通 Windows 终端先 Serve，再由 MCP / Web 复用身份。原生脚本及受限 Job 的失败分支已测，测试预启动的前台服务能证明复用 / 协议退出 / Web / Stop，不能证明独立常驻或 Desktop 冷启动。保持 M01-R3.4 / M07-R1.2 未完成，将普通终端正向验收写入待办；未引入服务、计划任务或更换父进程的路线。属于已批准生命周期约束的异常闭环，material_revision 仍为 3，Plan / README 同步。
+
+### 2026-10-18：任务引导、回复和选材持久结构（Agent 闭环）
+
+私有任务引导只接受现有 distillai 命名 pipe 地址和 32 字节认证 key 的 hex；连接前以严格模型核对。子进程收到任务后，先校验 ID / 种类 / 固定输入 / 目录 / 生成上限及模型连接，再建立任务私有配置或导入 AIAgent；模型连接直接复用配置模块的 ModelConnection，不维护第二份字段规则。程序回复只允许 result 或带白名单 code 的 error，不能同时存在或附加未知字段；完成确认沿原 result=null，消息尺寸复用 TaskPipe 的 MAX_MESSAGE。非法输入使用固定错误文本，错误回复不带原始载荷。
+
+M07 的选材、输出尝试和当前轮指针采用严格持久模型，复用 Candidate / RecordRef / Version；读取记录时核对 round_key 与路径，compact 恢复前核对 session 归属。坏字段、布尔恢复次数、错轮次或跨 session 指针不被恢复 / 覆写；已写出素材的文本与 Prompt 版本、最多三条和两次 compact 恢复规则保持。这里只补已批准私有协议与持久归属约束，不新增有效载荷字段或迁移数据，material_revision 仍为 3；M01-R5.1 继续清点其余控制记录，Desktop 输出 / 接收与语义验收不因此完成。

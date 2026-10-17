@@ -119,6 +119,39 @@ class SelectionResult(TypedDict):
     selected: NotRequired[list[Candidate]]
 
 
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class DeliveryAttempt(TypedDict):
+    delivery_type: Literal["current_round", "compact_restore"]
+    prompt_version: Version
+    context_version: Version
+    at: str
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class SelectionRecord(TypedDict):
+    round_key: Identifier
+    session_key: SessionKey
+    status: Literal["queued", "prepared"]
+    selected: Annotated[list[Candidate], Field(max_length=3)]
+    reason: NonblankText
+    restore_attempts: Annotated[int, Field(ge=0)]
+    request_version: Version
+    episode_ref: NotRequired[RecordRef]
+    task_id: NotRequired[Identifier]
+    prompt_version: NotRequired[Version]
+    output_phase: NotRequired[Literal["additional_context_written"]]
+    emitted_items: NotRequired[Annotated[list[Candidate], Field(max_length=3)]]
+    injection_prompt_version: NotRequired[Version]
+    outputs: NotRequired[list[DeliveryAttempt]]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class SelectionPointer(TypedDict):
+    round_key: Identifier
+
+
+SELECTION_RECORD = TypeAdapter(SelectionRecord)
+SELECTION_POINTER = TypeAdapter(SelectionPointer)
 CONTEXT_RECORD = TypeAdapter(ContextRecord)
 CONTEXT_RESULT = TypeAdapter(ContextResult)
 QUERY_RESULT = TypeAdapter(QueryResult)
@@ -432,7 +465,7 @@ def prepare_result(runtime, task, result):
 def after_commit(runtime, task):
     if task["kind"] == "screening":
         path = _selection_path(runtime, task["inputs"]["round_key"])
-        saved = json.loads(path.read_text(encoding="utf-8"))
+        saved = _read_selection(runtime, task["inputs"]["round_key"])
         result = json.loads(runtime.store.read_version(task["result_version"]))
         saved.update(status="prepared", selected=result["selected"], reason=result["reason"], prompt_version=task["prompt_version"])
         atomic_json(path, saved)
@@ -642,6 +675,13 @@ def _selection_path(runtime, round_key):
     return folder / (_identifier(round_key) + ".json")
 
 
+def _read_selection(runtime, round_key):
+    saved = SELECTION_RECORD.validate_json(_selection_path(runtime, round_key).read_bytes())
+    if saved["round_key"] != round_key:
+        raise ValueError("Selection record belongs to another round")
+    return saved
+
+
 def start_selection(runtime, session_key, prompt):
     path = _context_path(runtime, session_key)
     if not isinstance(prompt, str) or not prompt.strip():
@@ -659,7 +699,7 @@ def start_selection(runtime, session_key, prompt):
         candidates = [item for item in candidates if _candidate_current(runtime, item, versions)]
         if candidates:
             selection_prompt = (Path(__file__).parent / "prompts/selection.txt").read_text(encoding="utf-8")
-            history = [json.loads(item.read_text(encoding="utf-8")) for item in sorted(_selection_path(runtime, round_key).parent.glob("*.json"))]
+            history = [_read_selection(runtime, item.stem) for item in sorted(_selection_path(runtime, round_key).parent.glob("*.json"))]
             history = [{"round_key": item["round_key"], "selected": item["selected"]} for item in history if item["session_key"] == session_key and item.get("output_phase")]
             task = runtime.register("screening", {"session_key": session_key, "round_key": round_key, "prompt": prompt,
                 "candidates": candidates, "history": history}, "user_prompt_selection", prompt=selection_prompt)
@@ -672,7 +712,7 @@ def start_selection(runtime, session_key, prompt):
 
 def selection_status(runtime, round_key):
     with runtime.store.locked():
-        saved = json.loads(_selection_path(runtime, round_key).read_text(encoding="utf-8"))
+        saved = _read_selection(runtime, round_key)
         if "task_id" in saved:
             task = runtime.task(saved["task_id"])
             if task["status"] != "succeeded":
@@ -686,10 +726,12 @@ def restore_selection(runtime, session_key):
         pointer = runtime.store.home / "events/selections" / (session_key + ".current")
         if not pointer.exists():
             return {"status": "prepared", "selected": []}
-        round_key = json.loads(pointer.read_text(encoding="utf-8"))["round_key"]
+        round_key = SELECTION_POINTER.validate_json(pointer.read_bytes())["round_key"]
         saved = selection_status(runtime, round_key)
         if saved["status"] != "prepared":
             return {"status": saved["status"], "selected": []}
+        if saved["session_key"] != session_key:
+            raise ValueError("Selection record belongs to another session")
         saved["restore_attempts"] += 1
         atomic_json(_selection_path(runtime, round_key), saved)
         return saved
@@ -704,7 +746,7 @@ def write_selection(runtime, round_key, writer, *, compact=False):
         if compact and "emitted_items" not in saved:
             return False
         pointer = runtime.store.home / "events/selections" / (saved["session_key"] + ".current")
-        if not pointer.exists() or json.loads(pointer.read_text(encoding="utf-8"))["round_key"] != round_key:
+        if not pointer.exists() or SELECTION_POINTER.validate_json(pointer.read_bytes())["round_key"] != round_key:
             return False
         selected = saved.get("emitted_items", saved["selected"])
         if not compact:

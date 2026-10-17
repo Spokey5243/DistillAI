@@ -349,6 +349,18 @@ PM 实际 import distillai.hermes 后 Loguru / FastAPI / Uvicorn / FastMCP / Net
 
 收尾 Ruff、uv lock --check --offline、32 份文档 / 453 条本地链接及 git diff --check 通过，自建探针 / 服务进程均已退出。统一 Design、M01 / M07、README 和待办同步；保留 R3.4 / R1.2 未勾选，正向独立常驻与 Desktop 需在普通 Windows 终端 / 真实平台验证。当前无需新增技术选型，仍不引入系统服务、计划任务或父进程伪装。R5.1 的引导 / 回复 / 交付 / 控制记录仍是可独立实施工作；Goal 状态未变，不标整体完成。
 
+## 2026-10-18 第十批：任务引导、回复与选材持久结构
+
+本批在 44d9444b7a58312efe1caa680574de4871ce731a 上续接 M01-R5.1。任务子进程 stdin 的 pipe 地址 / 32 字节 authkey、固定 TaskInput 和程序 result / error 回复使用严格 TypeAdapter；ModelConnection 直接从 Config 共用，原 _LLM 仅更名为可复用定义，配置字段 / 错误路径 / 持久格式不变。消息大小统一引用 TaskPipe.MAX_MESSAGE。连接前验证引导，建立私有 home / 导入 AIAgent 前验证任务；非法任务关闭连接，以固定错误文本报告。程序回复恰为 result 或带白名单 code 的 error，完成确认沿既有 result=null，不重复建立协议 / 通信层。
+
+选材记录、当前轮指针和输出尝试接入 M07 严格模型，共用 Candidate / RecordRef / Version，历史 / 状态 / 后置登记通过同一记录读取入口。保存的 round_key 必须匹配文件名，恢复前必须匹配 session。先复现旧实现接受 bool 恢复次数 / 未知字段 / 错轮次、跨 session 指针读出其他选材并增加计数，再修复；错误字节保留。原“最多三条”、版本失效排除、写出失败不标已交付和两次 compact 复用已写文本 / Prompt 的契约保持。
+
+新增四项永久测试保护坏引导不得连接、歧义 / 多余回复不得采用、非法选材不推进及跨 session 恢复拒绝；原 UTF-8 / stdout 用例增加布尔额度输入的拒绝 / 连接关闭检查，先在旧实现失败后修复。定向工具 6 项 / Config 8 项 / Context 11 项通过。完整产品 **212 tests / OK，100.402s**（tenth-product.log），Chromium **5 tests / OK，17.925s**（tenth-browser.log）。
+
+实际 PM AIAgent 七场景 **43** 个合成 provider 到达请求通过，包含正常 result、BudgetError error、查询 / 来源 / 文件 / Shell、503 恢复、16 次可完成 / 17 次拒发；实际 Episode / M04 / M05 链 **22** 次与真实 Tavily keyless → M04 → M07 / 用户编辑链 **14** 次生成通过。证据 tenth-direct-hermes.log、tenth-episode.log、tenth-expansion.log。PM 实际 import distillai.hermes 的 Loguru / FastAPI / Uvicorn / FastMCP / NetworkX / settings / scheduler 加载集合为空（tenth-pm-import.log），未在 PM 安装产品依赖。生成内容仍是合成 localhost 响应，不作为真实模型语义验收。
+
+全范围 Ruff、离线锁检查、32 份文档 / 456 个本地链接及 git diff 检查通过；本批测试与 PM 探针进程均已退出。统一 Design、M01 / M07 和待办同步，material_revision 仍为 3；没有有效数据迁移或公开 API 变化。R5.1 仍未勾选，后续清点任务 / 提交及其余事件控制记录；已完成的任务引导 / 回复、选材持久模型不重复改写。普通终端独立冷启动、Desktop G2、物理休眠及真实模型语义条件不变，未执行远端写入，Goal 不标整体完成。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

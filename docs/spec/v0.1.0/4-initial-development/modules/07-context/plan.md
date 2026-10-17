@@ -80,6 +80,10 @@ stdio 进程配置独占 Loguru sink，取消未确认诊断直接 bind invocati
 
 上述服务由测试进程管理，不充当正向独立冷启动；R1.2 / R1.4 的 Desktop 条件继续未勾选。需在普通 Windows 终端与真实 Desktop 中完成正向验证，具体证据 / 问题见[总 Plan](../../plan.md)第九批及[待办](../../pending.md)。
 
+## 2026-10-18 第十批：选材持久结构与 compact 归属
+
+选材记录、当前轮指针与输出尝试复用 Pydantic / Candidate / RecordRef / Version，读取时核对轮次与 session；新增回归复现旧实现接受 bool / 未知字段、错 round_key，以及跨 session 指针读出别的选材并增加恢复次数，修复后错误字节保持。历史读取、筛选后登记、状态 / compact / 写出共用同一记录读取入口，不另建存储层。原有效选材 / 版本失效 / 两次 compact 与输出失败组继续通过；真实 Desktop 接收和采用仍未验，详见[总 Plan](../../plan.md)第十批。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

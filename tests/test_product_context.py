@@ -169,6 +169,31 @@ class ContextTests(unittest.TestCase):
         context.start_selection(runtime, "synthetic", "next prompt without candidates")
         self.assertFalse(context.write_selection(runtime, started["round_key"], output.append, compact=True))
 
+    def test_saved_selection_rejects_invalid_fields_without_advancing_restore(self):
+        runtime = self.runtime()
+        started = context.start_selection(runtime, "synthetic", "No candidates yet")
+        path = self.store.home / "events/selections" / (started["round_key"] + ".json")
+        original = json.loads(path.read_bytes())
+        for changed in ({"restore_attempts": True}, {"round_key": "f" * 32},
+                        {"selected": ["untrusted text"]}, {"extra": "ignored"}):
+            with self.subTest(changed=changed):
+                atomic_json(path, {**original, **changed})
+                before = path.read_bytes()
+                with self.assertRaises(ValueError):
+                    context.restore_selection(runtime, "synthetic")
+                self.assertEqual(path.read_bytes(), before)
+
+    def test_compact_pointer_cannot_restore_another_sessions_selection(self):
+        runtime = self.runtime()
+        started = context.start_selection(runtime, "synthetic", "Original private request")
+        folder = self.store.home / "events/selections"
+        path = folder / (started["round_key"] + ".json")
+        atomic_json(folder / "other-session.current", {"round_key": started["round_key"]})
+        before = path.read_bytes()
+        with self.assertRaises(ValueError):
+            context.restore_selection(runtime, "other-session")
+        self.assertEqual(path.read_bytes(), before)
+
     def test_prepare_publishes_stable_candidate_revisions_and_waits_for_three_new_updates(self):
         text = ["Use the existing synthetic connection"]
         def execute(task, control):

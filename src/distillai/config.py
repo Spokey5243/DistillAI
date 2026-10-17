@@ -42,7 +42,7 @@ class ModelParameters(TypedDict, total=False):
 
 
 @with_config(ConfigDict(strict=True, extra="forbid"))
-class _LLM(TypedDict):
+class ModelConnection(TypedDict):
     api: Literal["chat_completions"]
     base_url: SafeText
     model: SafeText
@@ -84,7 +84,7 @@ class _Workspace(TypedDict):
 
 @with_config(ConfigDict(strict=True, extra="forbid"))
 class ConfigValues(TypedDict):
-    llm: _LLM
+    llm: ModelConnection
     runtime: _Runtime
     episode: _Episode
     context: _Context

@@ -12,8 +12,10 @@ from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
 from pydantic import ConfigDict, Field, TypeAdapter, with_config
 
-from .runtime import BudgetError
-from .sources import Identifier, read_source
+from .config import ModelConnection, PositiveInt
+from .ipc import MAX_MESSAGE
+from .runtime import BudgetError, TaskKind
+from .sources import Identifier, NonblankText, read_source
 from .windows import ProcessJob
 
 
@@ -37,9 +39,12 @@ class HermesError(RuntimeError):
         self.detail = detail
 
 
+DiagnosticCode = Annotated[str, Field(pattern=r"^[A-Za-z][A-Za-z0-9_]{0,63}$")]
+
+
 @with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
 class ChildDiagnostic(TypedDict):
-    code: Annotated[str, Field(pattern=r"^[A-Za-z][A-Za-z0-9_]{0,63}$")]
+    code: DiagnosticCode
     stage: Literal["configuration", "tools", "initialize", "tool_manifest", "generation", "parse_result"]
     message: NotRequired[Literal["Task setup did not match its fixed configuration"]]
 
@@ -76,6 +81,43 @@ class CompletionReport(TypedDict, total=False):
     final_response: str | None
 
 
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class PipeBootstrap(TypedDict):
+    address: Annotated[str, Field(pattern=r"^\\\\\.\\pipe\\distillai-[0-9a-f]{32}$")]
+    authkey: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class TaskInput(TypedDict):
+    id: Identifier
+    kind: TaskKind
+    inputs: dict[str, Any]
+    workspace: NonblankText
+    home: NonblankText
+    llm: ModelConnection
+    max_model_calls: PositiveInt
+    prompt: str
+    search_key: NotRequired[str]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class OperationError(TypedDict):
+    code: DiagnosticCode
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class OperationFailure(TypedDict):
+    error: OperationError
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class OperationResult(TypedDict):
+    result: Any
+
+
+PIPE_BOOTSTRAP = TypeAdapter(PipeBootstrap)
+TASK_INPUT = TypeAdapter(TaskInput)
+PROGRAM_REPLY = TypeAdapter(OperationResult | OperationFailure)
 TASK_MESSAGE = TypeAdapter(TaskMessage)
 PROGRAM_ARGUMENTS = TypeAdapter(dict[str, Any], config=ConfigDict(strict=True, hide_input_in_errors=True))
 GENERATION_ATTEMPT = TypeAdapter(GenerationAttempt)
@@ -91,7 +133,10 @@ def _program_tool(frame, name, args):
     channel = frame["_channel"]
     with frame["_channel_lock"]:
         channel.send_bytes(json.dumps({"operation": name, "arguments": args}, ensure_ascii=False, allow_nan=False).encode("utf-8"))
-        response = json.loads(channel.recv_bytes(8 * 1024 * 1024))
+        try:
+            response = PROGRAM_REPLY.validate_json(channel.recv_bytes(MAX_MESSAGE))
+        except ValueError:
+            raise HermesError("Invalid program operation reply") from None
     if "error" in response:
         code = response["error"]["code"]
         if code == "BudgetError":
@@ -322,9 +367,16 @@ class HermesExecutor:
 def task_child():
     """The parent assigns and resumes this process before sending the first input line."""
     from multiprocessing.connection import Client
-    bootstrap = json.loads(sys.stdin.buffer.readline(4097))
+    try:
+        bootstrap = PIPE_BOOTSTRAP.validate_json(sys.stdin.buffer.readline(4097))
+    except ValueError:
+        raise HermesError("Invalid task pipe bootstrap") from None
     protocol = Client(bootstrap["address"], family="AF_PIPE", authkey=bytes.fromhex(bootstrap["authkey"]))
-    frame = json.loads(protocol.recv_bytes(8 * 1024 * 1024))
+    try:
+        frame = TASK_INPUT.validate_json(protocol.recv_bytes(MAX_MESSAGE))
+    except ValueError:
+        protocol.close()
+        raise HermesError("Invalid task input") from None
     frame["_channel"] = protocol
     frame["_channel_lock"] = threading.RLock()
     agent = None
@@ -434,7 +486,10 @@ def task_child():
     report = {"result": result} if error is None else {"error": error}
     report["final_response"] = final_response
     protocol.send_bytes(json.dumps({"operation": "complete", "arguments": report}, ensure_ascii=False, allow_nan=False).encode("utf-8"))
-    protocol.recv_bytes(8 * 1024 * 1024)
-    protocol.close()
+    try:
+        if PROGRAM_REPLY.validate_json(protocol.recv_bytes(MAX_MESSAGE)) != {"result": None}:
+            raise HermesError("Invalid task completion acknowledgement")
+    finally:
+        protocol.close()
     if error is not None:
         raise SystemExit(1)

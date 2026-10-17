@@ -21,6 +21,28 @@ class Registry:
 
 
 class ToolTests(unittest.TestCase):
+    def test_program_reply_rejects_extra_or_ambiguous_fields(self):
+        import threading
+        from distillai.hermes import HermesError, _program_tool
+        for reply in ({"result": 42, "extra": "synthetic-private"},
+                      {"result": 42, "error": {"code": "ValueError"}},
+                      {"error": {"code": "ValueError", "extra": "synthetic-private"}}):
+            frame = {"_channel_lock": threading.RLock(), "_channel": SimpleNamespace(
+                send_bytes=lambda data: None, recv_bytes=lambda limit: json.dumps(reply).encode())}
+            with self.subTest(reply=reply), self.assertRaisesRegex(HermesError, "Invalid program operation reply"):
+                _program_tool(frame, "new_record_id", {"record_kind": "knowledge"})
+
+    def test_invalid_pipe_bootstrap_does_not_open_a_connection(self):
+        from distillai.hermes import HermesError, task_child
+        valid = {"address": r"\\.\pipe\distillai-" + "a" * 32, "authkey": "00" * 32}
+        for changed in ({"address": "arbitrary-pipe"}, {"authkey": "00"}, {"extra": "synthetic-private"}):
+            payload = json.dumps({**valid, **changed}).encode()
+            with self.subTest(changed=changed), patch("sys.stdin", SimpleNamespace(buffer=io.BytesIO(payload))), \
+                    patch("multiprocessing.connection.Client", side_effect=OSError("synthetic connection refused")) as connect:
+                with self.assertRaises((HermesError, ValueError, OSError)):
+                    task_child()
+                connect.assert_not_called()
+
     def test_failed_job_assignment_does_not_leave_a_suspended_child(self):
         from distillai.hermes import HermesExecutor
         from distillai.config import Config
@@ -57,7 +79,7 @@ class ToolTests(unittest.TestCase):
                 runtime.close()
 
     def test_child_report_uses_utf8_pipe_and_keeps_stdout_clear(self):
-        from distillai.hermes import task_child
+        from distillai.hermes import HermesError, task_child
         class Agent:
             tools = []
             def __init__(self, **kwargs):
@@ -73,18 +95,30 @@ class ToolTests(unittest.TestCase):
                    "agent.ssl_verify": SimpleNamespace(resolve_httpx_verify=lambda **kwargs: True)}
         with tempfile.TemporaryDirectory() as temporary:
             frame = {"id": "a" * 32, "kind": "screening", "inputs": {}, "workspace": temporary,
-                     "home": str(Path(temporary) / "hermes"), "llm": {"model": "synthetic", "base_url": "http://127.0.0.1/v1", "api_key": "", "parameters": {}},
+                     "home": str(Path(temporary) / "hermes"), "llm": {"api": "chat_completions", "model": "synthetic", "base_url": "http://127.0.0.1/v1", "api_key": "", "parameters": {}},
                      "max_model_calls": 1, "prompt": "synthetic"}
             output = io.BytesIO()
             stdout = io.TextIOWrapper(output, encoding="gbk")
             messages = []
-            connection = SimpleNamespace(recv_bytes=lambda *args: json.dumps(frame).encode(), send_bytes=messages.append, close=lambda: None)
-            bootstrap = {"address": "synthetic", "authkey": "00"}
+            from unittest.mock import Mock
+            connection = SimpleNamespace(recv_bytes=Mock(side_effect=[json.dumps(frame).encode(), b'{"result":null}']),
+                send_bytes=messages.append, close=Mock())
+            bootstrap = {"address": r"\\.\pipe\distillai-" + "a" * 32, "authkey": "00" * 32}
             with patch.dict(sys.modules, modules), patch("sys.stdin", SimpleNamespace(buffer=io.BytesIO(json.dumps(bootstrap).encode()))), patch("multiprocessing.connection.Client", return_value=connection), patch("sys.stdout", stdout), patch("distillai.hermes.os.chdir"):
                 task_child()
             self.assertEqual(json.loads(messages[0].decode("utf-8"))["arguments"]["result"]["reason"], "⚠ 合成结果")
             self.assertEqual(output.getvalue(), b"")
             stdout.detach()
+            invalid_home = Path(temporary) / "invalid-home"
+            invalid = {**frame, "home": str(invalid_home), "max_model_calls": True}
+            connection.recv_bytes.side_effect = [json.dumps(invalid).encode(), b'{"result":null}']
+            connection.close.reset_mock()
+            with patch.dict(sys.modules, modules), patch("sys.stdin", SimpleNamespace(buffer=io.BytesIO(json.dumps(bootstrap).encode()))), \
+                    patch("multiprocessing.connection.Client", return_value=connection), patch("distillai.hermes.os.chdir"):
+                with self.assertRaises(HermesError):
+                    task_child()
+            self.assertFalse(invalid_home.exists())
+            connection.close.assert_called_once()
 
     def test_record_lookup_preserves_version_and_alias(self):
         registry = Registry()

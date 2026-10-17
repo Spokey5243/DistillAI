@@ -149,6 +149,12 @@ FastAPI 各写路由绑定 Pydantic 请求模型，先执行原认证 / 实际 b
 
 完整产品 208 项、启动 / 调度 9 项、Windows 9 项通过；原生 Check / Mcp 拒绝冷启动、既有服务 Serve / Web 复用及 Stop 已取得明确范围证据。测试服务归执行器回收，不伪装脱离全部 Job；真实拒绝回归在未替换的独立子进程运行。R3.4 仍缺普通终端的正向独立冷启动，不勾选；R5.1 后续结构工作继续。详见[总 Plan](../../plan.md)第九批与[待办](../../pending.md)。
 
+## 2026-10-18 第十批：任务引导与回复模型
+
+任务 stdin 引导、子进程固定 TaskInput、程序 result / error 回复及完成确认接入严格 TypeAdapter；模型连接复用 Config 的 ModelConnection，消息上限复用 TaskPipe.MAX_MESSAGE。非法 pipe / authkey 在连接前拒绝，布尔额度在私有配置 / AIAgent 前拒绝，坏输入关闭已建立连接；现有普通任务 / 认证 / 预算 / 停树不变。新增管道边界永久回归并扩展原 UTF-8 / stdout 用例，旧实现先失败后修复；M07 选材持久模型同时完成，详见[总 Plan](../../plan.md)第十批。
+
+R5.1 保留未完成，后续继续任务 / 提交及其余事件控制记录清点，不重复已完成引导 / 回复和选材模型；启动正向终端 / Desktop 条件沿[待办](../../pending.md)。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）
