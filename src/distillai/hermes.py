@@ -8,12 +8,12 @@ import sys
 import tempfile
 import uuid
 import threading
-from typing import Annotated, Literal, NotRequired, TypedDict
+from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
 from pydantic import ConfigDict, Field, TypeAdapter, with_config
 
 from .runtime import BudgetError
-from .sources import read_source
+from .sources import Identifier, read_source
 from .windows import ProcessJob
 
 
@@ -44,7 +44,45 @@ class ChildDiagnostic(TypedDict):
     message: NotRequired[Literal["Task setup did not match its fixed configuration"]]
 
 
-CHILD_DIAGNOSTIC = TypeAdapter(ChildDiagnostic)
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class TaskMessage(TypedDict):
+    operation: str
+    arguments: dict[str, Any]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class GenerationAttempt(TypedDict):
+    attempt_id: Identifier
+
+
+class GenerationRequest(GenerationAttempt):
+    request: dict[str, Any]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class WebCall(TypedDict):
+    tool: Literal["web_search", "fetch_page"]
+    arguments: dict[str, Any]
+
+
+class WebResponse(WebCall):
+    response: Any
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class CompletionReport(TypedDict, total=False):
+    result: Any
+    error: ChildDiagnostic | None
+    final_response: str | None
+
+
+TASK_MESSAGE = TypeAdapter(TaskMessage)
+PROGRAM_ARGUMENTS = TypeAdapter(dict[str, Any], config=ConfigDict(strict=True, hide_input_in_errors=True))
+GENERATION_ATTEMPT = TypeAdapter(GenerationAttempt)
+GENERATION_REQUEST = TypeAdapter(GenerationRequest)
+WEB_CALL = TypeAdapter(WebCall)
+WEB_RESPONSE = TypeAdapter(WebResponse)
+COMPLETION_REPORT = TypeAdapter(CompletionReport)
 
 
 def _program_tool(frame, name, args):
@@ -138,18 +176,15 @@ def _meter_client(client, frame):
 
 
 def _operation(runtime, task_id, name, arguments):
-    if not isinstance(arguments, dict):
-        raise ValueError("Invalid program operation arguments")
+    PROGRAM_ARGUMENTS.validate_python(arguments)
     runtime._live(task_id)
     if name == "reserve_generation":
-        if set(arguments) != {"attempt_id", "request"} or not isinstance(arguments["request"], dict):
-            raise ValueError("Invalid generation request")
+        GENERATION_REQUEST.validate_python(arguments)
         snapshot = _history_request(arguments["request"])
         request_version = runtime.store.put_version(json.dumps(snapshot, ensure_ascii=False, allow_nan=False).encode("utf-8"))
         return runtime.reserve_generation(task_id, attempt_id=arguments["attempt_id"], request_version=request_version)
     if name == "release_unissued_generation":
-        if set(arguments) != {"attempt_id"}:
-            raise ValueError("Invalid unused generation report")
+        GENERATION_ATTEMPT.validate_python(arguments)
         runtime.release_unissued_generation(task_id, arguments["attempt_id"])
         return {"released": True}
     if name in {"evaluate_episode_boundary", "evaluate_episode_revision", "read_episode_source"}:
@@ -157,15 +192,14 @@ def _operation(runtime, task_id, name, arguments):
         return {"evaluate_episode_boundary": evaluate, "evaluate_episode_revision": evaluate_revision,
                 "read_episode_source": read_episode_source}[name](runtime, task_id, arguments)
     if name == "audit_reads":
-        from .context import audit_reads
-        if not arguments or set(arguments) - {"records", "sources"}:
+        from .context import AUDIT_ARGS, audit_reads
+        AUDIT_ARGS.validate_python(arguments)
+        if not arguments:
             raise ValueError("Invalid read audit")
         return audit_reads(runtime, task_id, arguments.get("records", []), arguments.get("sources", []))
     if name in {"prepare_web_call", "complete_web_call"}:
         from .expansion import prepare_web_call, web_tool
-        expected = {"tool", "arguments"} | ({"response"} if name == "complete_web_call" else set())
-        if set(arguments) != expected:
-            raise ValueError("Invalid search operation")
+        (WEB_CALL if name == "prepare_web_call" else WEB_RESPONSE).validate_python(arguments)
         if name == "prepare_web_call":
             return prepare_web_call(runtime, task_id, arguments["tool"], arguments["arguments"])
         return web_tool(runtime, task_id, arguments["tool"], arguments["arguments"], arguments["response"])
@@ -238,13 +272,18 @@ class HermesExecutor:
                     channel.accept(timeout=10, cancelled=lambda: child.poll() is not None)
                     channel.send(json.dumps(frame, ensure_ascii=False, allow_nan=False).encode("utf-8"))
                     while True:
-                        message = json.loads(channel.receive(cancelled=lambda: child.poll() is not None))
-                        if not isinstance(message, dict) or set(message) != {"operation", "arguments"}:
-                            raise HermesError("Invalid task communication frame")
+                        try:
+                            message = TASK_MESSAGE.validate_json(channel.receive(cancelled=lambda: child.poll() is not None))
+                        except ValueError:
+                            raise HermesError("Invalid task communication frame") from None
                         name, arguments = message["operation"], message["arguments"]
                         if name == "complete":
-                            if not isinstance(arguments, dict) or set(arguments) - {"result", "error", "final_response"}:
-                                raise HermesError("Invalid task completion")
+                            try:
+                                COMPLETION_REPORT.validate_python(arguments)
+                            except ValueError:
+                                raise HermesError("Invalid task completion") from None
+                            if not arguments.get("error") and "result" not in arguments:
+                                raise HermesError("Task completion has no result")
                             channel.send(b'{"result":null}')
                             child.wait(timeout=5)
                             job.stop()
@@ -256,10 +295,7 @@ class HermesExecutor:
                                     runtime._save(saved)
                             if child.returncode or arguments.get("error"):
                                 if arguments.get("error"):
-                                    try:
-                                        detail = CHILD_DIAGNOSTIC.validate_python(arguments["error"])
-                                    except ValueError:
-                                        raise HermesError("Invalid task error report") from None
+                                    detail = arguments["error"]
                                     from loguru import logger  # Only the parent executor imports the product logger.
                                     logger.bind(component="backend", task_id=task["id"], stage=detail["stage"],
                                         error_code=detail["code"]).warning("agent_failed")

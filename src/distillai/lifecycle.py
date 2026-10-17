@@ -1,9 +1,31 @@
 """Program lifecycle signals, independent of the still-unverified Desktop adapter."""
 from datetime import datetime, timedelta
-import json
+from typing import Annotated, Literal, TypedDict
 
-from .sources import now, queue_path, scan_queue, utc
+from pydantic import ConfigDict, Field, TypeAdapter, with_config
+
+from .sources import SessionKey, Version, now, queue_path, scan_queue, utc
 from .storage import atomic_json
+
+
+EventKind = Literal["request_started", "response_stopped", "interrupted", "session_ended"]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class LifecycleRecord(TypedDict):
+    session_key: SessionKey
+    kind: EventKind
+    observed_at: str
+    sequence: Annotated[int, Field(ge=1)]
+    line_end: Annotated[int, Field(ge=0)]
+    deadline: str | None
+    code: Literal["invalid_source_prefix", "observation_clock_regressed", "source_boundary_regressed",
+                  "unconfirmed_response_start", "interruption_timing_unverified"] | None
+    previous_version: Version | None
+
+
+EVENT_KIND = TypeAdapter(EventKind)
+LIFECYCLE_RECORD = TypeAdapter(LifecycleRecord)
 
 
 def _path(runtime, key):
@@ -13,7 +35,15 @@ def _path(runtime, key):
 
 def read(runtime, key):
     path = _path(runtime, key)
-    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+    if not path.exists():
+        return None
+    record = LIFECYCLE_RECORD.validate_json(path.read_bytes(), strict=True)
+    if record["session_key"] != key:
+        raise ValueError("Lifecycle record belongs to another session")
+    _time(record["observed_at"])
+    if record["deadline"] is not None:
+        _time(record["deadline"])
+    return record
 
 
 def _time(value):
@@ -24,8 +54,7 @@ def _time(value):
 
 
 def observe(runtime, key, kind, *, observed_at=None):
-    if kind not in {"request_started", "response_stopped", "interrupted", "session_ended"}:
-        raise ValueError("Unknown normalized lifecycle event")
+    EVENT_KIND.validate_python(kind)
     at, moment = _time(now() if observed_at is None else observed_at)
     with runtime.store.locked():
         path = _path(runtime, key)

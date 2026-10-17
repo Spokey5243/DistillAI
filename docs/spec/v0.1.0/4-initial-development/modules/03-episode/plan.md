@@ -56,6 +56,10 @@ uv run --locked python -m unittest discover -s tests -p 'test_product_correction
 
 M01 停机排空修复覆盖扫描、独立 exploration 与到期回调：先 pause，由公开执行事件确认工作结束，再关闭调度器与 Runtime。原生命周期 / 迟到截止 / 忙扫描组在完整产品 197 项通过；真实 Desktop 事件、物理休眠与语义仍未验，不因此勾 R1.3。见[总 Plan](../../plan.md)第六批。
 
+## 2026-10-18 第八批：生命周期持久结构
+
+生命周期记录用严格 TypeAdapter 读取，拒绝布尔 / 非整数计数、未知事件 / 字段和错属 session，并沿已有 UTC 规则核对时间；错误记录字节保持，不推进事件或关闭 episode。新增回归先复现旧实现继续推进再修复，原重启 / 暂停 / 迟到材料 / 关闭组通过。事件语义、计时和 Desktop 接入范围不变；实际 G2 / 物理休眠仍未验，详见[总 Plan](../../plan.md)第八批。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

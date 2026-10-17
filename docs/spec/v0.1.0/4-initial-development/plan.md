@@ -323,6 +323,18 @@ Store 对已 committed 清单只核对输出 / 新增目录存在及路径安全
 
 R6.4 / R6.6 已勾选，R6 全部完成；统一 Design、M01 / M08 Plan、README 与待办同步。下一步仍有 R5.1 的 IPC / 生命周期 / 交付 / 持久控制结构清点及启动接入，未把本批当整体完成。Goal 最新查询为 usageLimited，未自行改状态或新建替代 Goal；本轮 heartbeat 已授权的本地实施已完成。Desktop G2、获准真实模型语义、物理休眠及 GitHub CI 未验，无远端写入。
 
+## 2026-10-18 第八批：程序操作与生命周期严格模型
+
+本批在 57a891dbc8dfc584fd55d1ee180e0287c2c48238 上续接 M01-R5.1。Hermes 适配的管道消息、生成 attempt / 请求、搜索操作包装与完成报告改用 Pydantic strict / extra=forbid / TypeAdapter，删除替代掉的字段集合 / 类型遍历；完成报告复用 ChildDiagnostic，不再重复校验。搜索实际参数继续复用 M06 模型；读取审计模型留在 M07，复用 RecordRef / SourceRef，来源存在、任务状态、实际读到的固定快照仍由原业务函数检查。模型 SDK 请求、消息分帧、认证及停树方式不变，PM 不安装产品框架。
+
+先复现空 attempt_id 被 Runtime 自动生成并扣额，再在管道的 GenerationRequest 前置拒绝，坏输入不保存请求版本或额度。Runtime 直接调用原有可选 attempt_id 契约不变。生命周期新增严格持久模型，读取时拒绝 bool / 非整数计数、错属 session、未知事件 / 字段，复核已有 aware UTC 规则；坏记录不被后续事件覆盖、不形成关闭信号。新增两项永久回归保护这些持久 / 额度不变量；原只读查询回归改走实际 audit_reads 程序入口，错误审计无状态变更，合法审计后保留固定版本结果。
+
+完整产品 **207 tests / OK，100.089s**（eighth-product.log）；随后增强的查询 / 审计组 **9 tests / OK，2.315s**；Chromium **5 tests / OK，20.546s**（eighth-browser.log）。实际 PM AIAgent 七场景 / **43** 个合成 provider 到达请求完成无工具筛选、查询 / 来源、文件 / Shell、503 恢复、16 次完成与 17 次拒发。旧一次性查询 fixture 使用了非正式 ID / version，本轮改为合法合成引用并补工具返回正文断言后复跑通过，不能仅凭任务 succeeded 认定读取成功（eighth-direct-hermes-final.log）。实际 Episode / 评分 / M04 / M05 链 **22** 次请求及真实 Tavily keyless → M04 → M07 / 用户编辑链 **14** 次生成通过（eighth-episode.log、eighth-expansion.log）。这些 provider 生成内容均为合成响应，不作为实际模型语义验收。
+
+PM 实际 import distillai.hermes 后 Loguru / FastAPI / Uvicorn / FastMCP / NetworkX / settings / scheduler 加载集合仍为空（eighth-pm-import.log）。Ruff、锁一致性、32 份文档 / 448 条本地链接及 diff 空白检查通过，测试 / 探针进程均已退出。证据仅保留忽略目录 .artifacts，未使用个人数据，未执行远端写入。
+
+统一 Design、M01 / M03 / M07 执行记录及待办已同步，material_revision 仍为 3。R5.1 保持未勾选：任务引导 / 回复、交付及其余持久控制记录继续清点；启动接入 / 清理审计仍有可独立实施项。Goal 用量状态未变，不重建或标 complete；外部 Desktop / 模型语义 / 物理休眠条件沿待办，不阻止后续本地工作。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

@@ -80,6 +80,19 @@ class QueryItem(TypedDict):
     record_ref: RecordRef
 
 
+class AuditedRecord(RecordRef):
+    record_kind: Literal["knowledge", "relation", "hypothesis", "episode", "expansion"]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class AuditArgs(TypedDict, total=False):
+    records: list[AuditedRecord]
+    sources: list[SourceRef]
+
+
+AUDIT_ARGS = TypeAdapter(AuditArgs)
+
+
 class PreparedQueryItem(QueryItem):
     record: dict[str, Any]
     source_refs: list[SourceRef]

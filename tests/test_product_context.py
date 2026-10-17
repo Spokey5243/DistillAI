@@ -51,9 +51,15 @@ class ContextTests(unittest.TestCase):
 
     def test_query_must_read_returned_record_and_preserve_its_frozen_version(self):
         def execute(task, control):
+            from distillai.hermes import _operation
             prepared = context.execution_task(control, task)
             record = prepared["inputs"]["records"][0]
-            context.audit_reads(control, task["id"], [{name: record[name] for name in ("id", "version", "record_kind")}])
+            ref = {name: record[name] for name in ("id", "version", "record_kind")}
+            for invalid in ({"records": [{**ref, "version": True}]}, {"sources": None}, {}):
+                with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                    _operation(control, task["id"], "audit_reads", invalid)
+                self.assertEqual(control.task(task["id"])["read_record_refs"], [])
+            _operation(control, task["id"], "audit_reads", {"records": [ref]})
             atomic_json(self.store.home / "knowledge" / (A + ".json"), {**self.record, "content": {"summary": "later content", "source_refs": [self.ref]}})
             return {"status": "ok", "items": [{"record_kind": "knowledge", "record_ref": {"id": A, "version": record["version"]}}], "source_refs": [self.ref], "reason": "read actual record"}
 

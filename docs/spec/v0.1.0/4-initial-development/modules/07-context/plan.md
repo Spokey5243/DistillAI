@@ -70,6 +70,10 @@ HTTP 查询 / 反馈与 FastMCP 原生签名共用 SessionKey、RequestText、Re
 
 stdio 进程配置独占 Loguru sink，取消未确认诊断直接 bind invocation / stage / error_code，日志失败继续协议。真实 PythonStdioTransport 在正常和 logger.add 模拟失败下都完成工具列表、精确查询、严格输入、反馈幂等，退出后后台保持存活；零模型生成，不替代 Desktop。完整产品 197 项通过。见[总 Plan](../../plan.md)第六批。
 
+## 2026-10-18 第八批：程序读取审计参数
+
+管道 audit_reads 参数的严格结构留在本模块，复用 RecordRef / SourceRef；固定快照实际成员与任务状态仍由原 audit_reads 判断。原查询回归通过真实程序操作入口验证错误审计不写状态，合法审计后实际冻结版本仍可返回。MCP 公开工具签名和业务返回未变，交付 / compact 持久结构仍需 R5.1 后续清点；Desktop 项不因此勾选，详见[总 Plan](../../plan.md)第八批。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

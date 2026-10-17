@@ -73,6 +73,15 @@ class HermesTransportTests(unittest.TestCase):
         self.assertEqual(len(requests), 1)
         self.assertEqual(self.runtime.task(self.task["id"])["model_calls"], 1)
 
+    def test_generation_operations_require_a_fixed_attempt_identity_before_writing(self):
+        before = set((self.store.home / "versions").glob("*"))
+        for attempt in (None, True, 1, "", "not-an-attempt"):
+            with self.subTest(attempt=attempt), self.assertRaises(ValueError):
+                _operation(self.runtime, self.task["id"], "reserve_generation",
+                    {"attempt_id": attempt, "request": {"model": "synthetic"}})
+        self.assertEqual(self.runtime.task(self.task["id"])["model_calls"], 0)
+        self.assertEqual(set((self.store.home / "versions").glob("*")), before)
+
 
 if __name__ == "__main__":
     unittest.main()

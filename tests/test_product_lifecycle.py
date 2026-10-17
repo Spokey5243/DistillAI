@@ -12,6 +12,21 @@ from distillai.storage import Store, atomic_json
 
 
 class LifecycleTests(unittest.TestCase):
+    def test_invalid_saved_event_cannot_advance_or_close_the_session(self):
+        original = self.observe("request_started", 0)
+        path = self.home / "events/lifecycle/synthetic.json"
+        original.pop("version")
+        for changed in ({"sequence": True}, {"line_end": False}, {"session_key": "other-session"},
+                        {"kind": "guessed_end"}, {"unknown": "ignored"}):
+            with self.subTest(changed=changed):
+                atomic_json(path, {**original, **changed})
+                saved = path.read_bytes()
+                with self.assertRaises(ValueError):
+                    lifecycle.observe(self.runtime, "synthetic", "response_stopped", observed_at=self.at(1))
+                with self.assertRaises(ValueError):
+                    lifecycle.closing_signal(self.runtime, "synthetic", at=self.at(31))
+                self.assertEqual(path.read_bytes(), saved)
+
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
