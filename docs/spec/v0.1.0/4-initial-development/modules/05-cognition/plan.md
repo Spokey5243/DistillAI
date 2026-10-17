@@ -61,6 +61,12 @@ uv run --locked python -m unittest discover -s tests -p 'test_product_correction
 
 重分析清单用严格模型复用 RecordRef / SourceRef / VersionedRef，waiting 与带 resolved_by 的 ready 分开定义，读写边界共用；坏引用、未知状态 / 字段和缺少解除任务不再被采用。直接依赖、同提交等待、当前 M05 才解除及旧选材须重新准备规则不变。新增回归先失败后修复，实际 PM 归属纠错 / 独立认知纠错 11 次、新材料直接修订 12 次合成生成通过，见[总 Plan](../../plan.md)第十三批。真实模型语义与 Desktop 自然反馈仍未验收。
 
+## 2026-10-18 第十五批：七组材料只读复核与纠错交互
+
+只读核对原 semantic-acceptance-data 七组材料：13 行合成队列范围可读取，字节与原不可变版本一致；common / knowledge / cognition / context 四类 Prompt hash 与当前文件一致，审阅边界非空，原 manifest / 队列未改，模型调用仍为 0（fifteenth-semantic-audit.log / .json）。准备配置与当前产品配置章节相同，但本次实际模型的私有 endpoint / model / key 未提供；R2.1 的配置核对与 R2.2 实际执行保持未完成，不重造材料或用合成回答验语义。
+
+真实浏览器另验证独立认知纠错失败留输入、成功后的 user_submission、正文保持及旧版本冲突；实际 PM 同类纠错 4 次生成与两条 M03 / M04 / M05 链通过，仍只证明机械行为。M08 完成不解除真实模型 / Desktop 自然反馈条件。详见[总 Plan 第十五批](../../plan.md#2026-10-18-第十五批完整-web-验收与修订链收尾)。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

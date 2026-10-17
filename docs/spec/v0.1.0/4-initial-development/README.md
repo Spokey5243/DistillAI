@@ -2,6 +2,8 @@
 
 2026-10-17，用户已批准重写总 Plan 与八模块 Plan，统一 Design 修订 3 已同步；当前持续实施重构与新功能。Goal 与半小时续接检查已启用，需要用户决策的事项写入 pending.md。下方此前草案状态与旧完成比例保留为历史，当前以 Plan 的批准记录和执行证据为准。
 
+2026-10-18 第十五批：当前框架下 M08 完整浏览器验收完成，模块为 implemented；M03 修订交接和 M04 三类维护链机械验收完成，七组语义材料来源 / Prompt 已复核。真实模型、Desktop G2、独立冷启动、物理休眠与 PR / CI 仍未完成，详见[总 Plan](plan.md)与[待办](pending.md)。
+
 关联 [Issue #4](https://github.com/Spokey5243/DistillAI/issues/4)，分支 `codex/4-initial-development`，采用 Exploratory 流程。
 
 2026-10-16 当前入口：[重写后的总 Plan](plan.md)与八模块 Plan 均为 `draft`，取代旧 140 步及 R01 的继续执行安排。新稿明确复用 Hermes / FastAPI / Uvicorn / HTTPX / MCP / NetworkX、移除模型 HTTP 代理，旧代码与执行证据保留；具体 Design 差异写在总 Plan，尚未补造批准或实施。下方按日期保留的进度仅是重写前历史，不作为继续代码实施的授权。

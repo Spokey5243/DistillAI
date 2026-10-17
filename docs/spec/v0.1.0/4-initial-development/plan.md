@@ -413,6 +413,22 @@ M07 查询记录区分直接结果 / 后台任务 / 提前取消，反馈区分 
 
 本轮只补验收证据与 Spec 状态，不新增永久测试、依赖或生产路径。全范围 Ruff、离线锁、32 份文档 / 467 个本地链接及 git diff 检查通过。Design、M01、M08 和待办同步，material_revision 仍为 3；真实模型 / Desktop G2、普通终端独立冷启动、物理休眠与远端授权条件保持。全部本批探针、测试、Chromium 和 fixture 已结束；无真实数据迁移或远端写入，Goal 不标整体完成。
 
+## 2026-10-18 第十五批：完整 Web 验收与修订链收尾
+
+在 f2b2c9b42efc1e17e269a03883a508a0bee928a4 的干净任务分支续接 M08-R2.1 / R2.2、M05-R2.1，并核对 M03 / M04 修订交接。工作区、固定 PM / Hermes、当前 Goal 和批准记录已核对；未改生产代码、依赖、上游或真实数据。
+
+独立合成 ASGI / Chromium 完整交互 **2 tests / OK，21.443s**（fifteenth-rich-web-final.log）。复用 CorrectionTests / BrowserTests 和真实 context 准备 / 筛选 / 发布入口，验证 23 条分页 / 准确名称筛选、原用户来源、编辑后旧知识版本只读、四项关联记录（外扩、两份不可变上下文、已选素材）。两份 MCP 背景 / 注入候选分别展开，纯文本偶含 ID 不当关联，历史外扩可打开；输出阶段明确不等于平台收到。
+
+两窗口正文 / 认知纠错均取得实际 409 并保留输入 / 原因；归属 422 不丢行范围，修正后观察 running → succeeded。当前依据的等待说明附 episode 版本，M05 故意失败保持等待，经新 M04 → M05 解除，旧失败任务 input_version / model_calls / status 保持。独立认知纠错先失败留输入，再新请求成功，用独立 user_submission、知识正文保持，独立应用仍未知。维护回调合成，真实模型调用 0；人工查看 fifteenth-web/ 的 waiting.png、corrected-judgment.png、historical-expansion.png。
+
+临时探针修正多处文本定位及同 URL 刷新；最小探针另确认当前 Playwright wait_for_function 对 async 函数采用 Promise 真值，即使最终 false 也提前返回。改为真实 API 状态有界轮询、明确超时失败后完整复跑通过；没有把等待脚本错误当生产问题或放宽断言。结合第十四批五项永久回归、四入口 / 空列表 / 404 / 迟到响应 / 键盘 / 窄屏，M08-R2.1 / R2.2 完成，模块状态改为 implemented；A1.4 的实际日常交付 / 自然反馈及整体产品不提前完成。
+
+当前 PM AIAgent 明确归属 / 空 M04 / 空 M05 / Web 独立纠错共 **11** 次合成生成（5 / 1 / 1 / 4），新材料旧边界修订 / M04 / M05 共 **12** 次（10 / 1 / 1）；历史来源 RPC、新引句、固定来源、同提交等待和最新修订解除均通过（fifteenth-corrections-direct.log、fifteenth-material-direct.log）。episode / 纠错 / context / Web **43 tests / OK，12.467s**（fifteenth-targets.log），知识 **9 tests / OK，1.877s**（fifteenth-knowledge.log），继续保护并集守恒、同轮完整、跨 session / 旧输入、固定次数、直接依赖刷新与图失败不重算。M03-R2.3 据此勾选。M04-R2.2 结合新增空结果交接、浏览器编辑及第十四批 Tavily → M04 → M07 / 用户编辑 14 次证据勾选；两阶段 src Git 树同为 3348828b89b92d12fafcc69a92eab7187a2adeb3。生成 provider 为 localhost 合成响应，不作模型语义证明。
+
+七组原语义材料只读复核通过：13 行队列引用可读取、字节与不可变版本一致，四类 Prompt hash 与当前文件一致，原 manifest / 队列未改，模型调用 0（fifteenth-semantic-audit.log / .json）。准备配置章节与当前产品一致；本次实际模型私有配置未提供，M05-R2.1 的配置核对与 R2.2 继续待办，材料不重复重建。
+
+全范围 Ruff、离线锁、32 份文档 / 473 个本地链接及 git diff 检查通过。本轮仅保存验收证据 / 文档及状态，没有新增永久测试或改生产逻辑。同步 Design、M03 / M04 / M05 / M08、版本 / Spec 入口、README 与待办，material_revision 仍为 3。下一轮审计 M06-R2.1 周期 / 重启公平性和 M07-R1.3 查询 / 独立取消的剩余本地机械证据；Desktop G2、普通终端独立冷启动、物理休眠、真实模型和远端授权仍单列。全部本批 fixture / 浏览器 / PM / 测试进程已退出，无真实数据迁移或远端写入，Goal 不标整体完成。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

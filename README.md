@@ -4,6 +4,8 @@
 
 当前计划已按用户意见纳入 SQLite 控制状态事务、Playwright 浏览器回归和 Ruff 静态检查，具体见总 Plan、M01-R6 与 M08-R3。SQLite 控制状态与离线迁移工具已实现并通过合成数据验证；产品依赖与 Chromium 已安装，真实浏览器回归已运行。未迁移真实用户数据。
 
+2026-10-18，当前框架下 Web 的来源 / 版本 / 关联回查、两类纠错、冲突与失败留输入已完成实际浏览器验收，M08 为 implemented。维护回调使用合成数据；真实模型语义、Codex Desktop 闭环、独立后台启动及 PR / CI 仍待验，整体产品尚未完成。
+
 ## GitHub 与标准开发流程
 
 项目使用 Codex Desktop 开发，GitHub 管理 Issue / PR / CI，远端操作默认使用本机 GitHub CLI `gh`，不依赖 MCP。首次登录、workflow 权限、建仓、默认分支保护及 Desktop Hook 信任步骤见 [GitHub 配置指南](docs/development/github-setup.md)。
