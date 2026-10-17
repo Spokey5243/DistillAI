@@ -52,6 +52,10 @@ uv run --locked python -m unittest discover -s tests -p 'test_product_correction
 
 评分 / 修订参数、Episode / 缓冲状态 / 发布结果改由本模块严格 TypeAdapter 校验，工具 schema 由相同定义生成；归属守恒、完整轮次、固定引句、程序 K / S 和版本发布仍为领域校验。实际 PM AIAgent 首建 / 评分 / M04 / M05 3 / 7 / 7 / 5 次，新材料修订 / 空 M04 / 空 M05 10 / 1 / 1 次成功，旧来源按需 RPC 与同清单等待 / 解除通过；完整产品含原 Episode / lifecycle / corrections 组 192 项通过。由新证据勾 R2.1 / R2.2；R2.3 的修订后 M07 完整交接、G2 和真实模型语义仍未全验。见[总 Plan](../../plan.md)。
 
+## 2026-10-17 第六批：Loguru 进程日志与停机排空
+
+M01 停机排空修复覆盖扫描、独立 exploration 与到期回调：先 pause，由公开执行事件确认工作结束，再关闭调度器与 Runtime。原生命周期 / 迟到截止 / 忙扫描组在完整产品 197 项通过；真实 Desktop 事件、物理休眠与语义仍未验，不因此勾 R1.3。见[总 Plan](../../plan.md)第六批。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

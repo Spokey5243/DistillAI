@@ -12,6 +12,7 @@ from fastmcp.exceptions import ToolError
 from loguru import logger
 
 from .context import RequestText
+from .diagnostics import diagnostic_sink
 from .sources import QueueRef, RecordRef, SessionKey
 
 
@@ -45,7 +46,8 @@ class Bridge:
                         await self.request(path + "/cancel", method="POST",
                             body={"reason": "MCP call cancelled, disconnected, or failed before a result was returned"})
                     except Exception:
-                        logger.bind(invocation=invocation, error_code="query_cancel_unconfirmed").warning("query_cancel_unconfirmed")
+                        logger.bind(component="mcp", invocation=invocation, stage="cancel",
+                            error_code="query_cancel_unconfirmed").warning("query_cancel_unconfirmed")
 
     async def submit_feedback(self, client_request_id, session_key, performance, task, help,
                               knowledge_refs=None, relation_refs=None, source_refs=None):
@@ -131,4 +133,9 @@ def create_server(home, *, lifespan=None):
 
 
 def run_stdio(home):
-    create_server(home).run(transport="stdio", show_banner=False)
+    with diagnostic_sink(home, "mcp"):
+        logger.bind(component="mcp", stage="start").info("mcp_started")
+        try:
+            create_server(home).run(transport="stdio", show_banner=False)
+        finally:
+            logger.bind(component="mcp", stage="stop").info("mcp_stopped")

@@ -293,6 +293,20 @@ R5.1 继续保留未勾：HTTP 请求结构和剩余记录字段的完整清点�
 
 M01-R2.2 当前范围完成。R5.1 保留未勾，继续清点 IPC 程序操作、生命周期 / 交付与持久控制记录的剩余结构校验；原始 Codex / Tavily 上游 payload 不改造成闭合产品记录，继续按上游格式取用。Loguru sink 的各进程归属和 APScheduler 停机取消诊断、SQLite / 文件完整故障窗口仍由 Agent 继续，不需要新的用户技术路线决策。G2、机器休眠、实际模型语义及 CI 未验；无真实数据迁移或远端写入，Goal 仍 active。
 
+## 2026-10-17 第六批：Loguru 进程日志与停机排空
+
+在本地 9a43c257cb4e681393a4cff167f4e6a453775a27 上实施 M01-R5.4。diagnostics.py 只管理 Loguru sink 注册与退出 complete / remove；业务直接 logger.bind，保留 task / session / stage / error_code 等白名单，静态事件消息，不记录任意异常正文、原文、配置 key 或异常栈。未知 extra 字段和 exception record 不进入文件，serialize 使用 Loguru 原生结构，文本时间按 !UTC 输出；diagnose / backtrace 关闭。Store.event 和 SQLite 的持久恢复职责未替换。
+
+后台 / MCP 各有带时间及真实 PID 的独占 JSONL，mode=x 避免共享，时间格式中的 PID 不阻断 Loguru 的跨进程文件匹配；5 MB 轮转、gzip、7 天 retention 交库处理。短生命周期 Hook 一次只写一条诊断，rotation=None，使 Loguru 在退出时压缩 / 执行 retention；否则从不达到 5 MB 的独立 Hook 无法触发清理。旧 capture-errors.log 保留为历史，不移动真实数据。诊断配置 / 写入失败继续原业务；MCP stdout 只协议。PM 沿原 Hermes 日志，不安装或导入 Loguru；父进程只验证并记录 ChildDiagnostic 的有界 code / 固定 stage，不复制异常原文。
+
+停机问题先复现：独立 expansion 回调仍在执行时 service_lifespan 已返回，且 APScheduler 打印 CancelledError。检查锁定 AsyncIOExecutor 源码确认 shutdown(wait=True) 仍取消 Future。现按公开 SUBMITTED / EXECUTED / ERROR / MISSED 事件追踪本模块 coalesce / max_instances=1 的工作，在 shield 内 pause 后等待排空，再 shutdown 和关闭 Runtime；没有使用调度器私有 Future、定时轮询或吞掉取消。回调普通异常按白名单记录 ERROR，周期入口保留后续重试；扫描中的数据库故障仍走原隔离 / 停树路径，关闭失败记 stop_pending。新增回归证明排空等待，回调报错可观测且异常正文不落日志；原迟到截止 / 忙扫描唤醒组继续通过。
+
+完整产品 **197 tests / OK，56.734s**，Chromium **5 tests / OK，18.278s**；最后 PID 命名细化后诊断 3 项与启动 / 调度 8 项再次通过，16.811s。两真实 capture Python 进程各写独立、已排空压缩日志，测试核对 Python 自身 PID（Windows venv launcher PID 不等于解释器 PID），无正文 / key。实际 PythonStdioTransport 正常及 logger.add 模拟失败两场景均通过精确查询、严格输入、反馈幂等与 stdio 退出后后台存活，零模型调用。PM 实际 import distillai.hermes 的产品框架加载集合为空；实际 AIAgent 七场景 / 43 个合成到达请求通过，16 次可完成、17 次拒发仍正确，子进程失败的 code / stage 只在父进程记录。
+
+一次性 Loguru 实测保存 1000 条合成消息，实际跨 5 MB 轮转 gzip，库清除超过 retention 的合成文件，未知 extra 与异常对象被拒、UTC 文本有效。原真实数据与日志不参与探针；证据 sixth-product.log、sixth-browser.log、sixth-startup-final.log、sixth-direct-hermes.log、sixth-pm-import.log、sixth-stdio.log、sixth-stdio-no-log.log、sixth-loguru-lifecycle.log 均在忽略的 .artifacts。Ruff、uv lock --check --offline、32 份文档 / 443 条本地链接和 git diff --check 通过；本轮探针进程均已退出。
+
+M01-R5.4 完成。R5.1 剩余 IPC / 生命周期 / 交付 / 持久控制结构和 R6 文件 / SQLite 完整故障闭环继续推进；Desktop G2、真实模型语义、物理 Windows 休眠和 CI 未验，无远端写入，Goal 保持 active。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

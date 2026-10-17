@@ -1,5 +1,6 @@
 """Capture keeps conversational text and never advances past unsaved queue bytes."""
 import json
+import gzip
 import os
 from pathlib import Path
 import subprocess
@@ -78,7 +79,8 @@ class CaptureTests(unittest.TestCase):
         with patch("distillai.capture.FileHandle.write", side_effect=OSError("SECRET BODY")):
             self.assertEqual(capture(self.home, self.payload), "error")
         self.assertFalse(self.cursor().exists())
-        log = (self.home / "logs/capture-errors.log").read_text()
+        log = "".join(gzip.decompress(path.read_bytes()).decode("utf-8") for path in (self.home / "logs").glob("capture-*.jsonl.gz"))
+        self.assertTrue(log)
         self.assertNotIn("SECRET", log)
         self.assertNotIn("question", log)
         self.assertEqual(capture(self.home, self.payload), "saved")

@@ -14,6 +14,8 @@ material_revision: 3
 
 2026-10-17，用户批准重写总 Plan 与 M01–M08，授权完成代码重构和计划内新功能。当前基线为修订 3：Hermes SDK 直连模型，发送前经父进程持久预算确认；任务私有模型 / 搜索配置经认证管道交到当前任务进程内存，不进入 Prompt、任务输入、日志或历史。FastAPI / Uvicorn 承载本机业务 API；SQLite 仅保存运行控制状态，内容文件与原始队列保留。具体复用与迁移边界以已批准总 Plan / M01-R6 为准；OS 写隔离继续延期。需用户决策事项写入 pending.md，其余已批准步骤持续实施；远端写入仍需对应授权。下方 2026-10-16 的草案状态仅保留为历史。
 
+2026-10-17 第六批诊断接入：批准范围内细化 Loguru 独占进程文件命名、白名单、UTC 与库内轮转 / 压缩 / retention，持久业务事件仍由 Store / SQLite 保存。APScheduler 在 pause 后按公开事件排空，避免 wait=True 实际取消在途工作。当前完整产品 197 项、浏览器 5 项及正常 / 日志失败 stdio、实际 PM 边界通过；见[总 Plan](plan.md)第六批，Plan R5.4 完成，原真实验收门禁保持。
+
 2026-10-17 第五批请求接入：FastAPI 写路由共用领域 Pydantic 请求模型，经过原授权 / CSRF 与实际字节上限后才校验；框架默认请求解析不替代该边界。部分配置字段错误仍由 Config.update 返回，配置版本类型错误仍为 409；有效公开载荷不变。FastMCP 同用会话 / 文本 / RecordRef，用户反馈只接受本会话 QueueRef 作为表现证据。来源正文保留开放 payload map，命名元数据由严格模型校验。当前 193 项产品、5 项浏览器、实际 stdio 与 PM 合成链通过，具体见[总 Plan](plan.md)第五批；业务语义 / Desktop 仍单列待验。
 
 2026-10-17 第四批结构接入：各领域拥有记录 / 结果的 Pydantic strict 模型，共用来源 / 记录引用由 sources.py 提供，程序工具参数用同一 TypeAdapter 生成 schema。闭合元数据拒绝未知字段；内容 / provenance / 帮助说明等原有开放文档 map 保留开放，M04 原样保留 M05 字段并由 M05 验证。来源、权限、前后版本与实际语义继续单独判断，不由结构模型替代。当前产品 192 项、Chromium 5 项及实际 PM 合成链已验证；HTTP 请求 / 剩余记录清点继续，实施边界与证据见[总 Plan](plan.md)第四批。
@@ -260,7 +262,7 @@ key 用完整 session_id，仅把 ASCII 字母、数字、下划线、连字符�
 
 ### 返回、通知与恢复
 
-采集 command Hook 正常、跳过或失败 stdout 均为 `{}`、exit 0；诊断不混入 stdout。缺 session_id 不创建队列 / cursor；Stop / PreCompact 缺 transcript_path 或不可读不推进 cursor，PostToolUse 不依赖它。错误仅向 logs/capture-errors.log 写 UTC、事件、可用 key、阶段及错误码，不存正文、输入输出、凭证或完整异常 payload；诊断失败也不阻塞。
+采集 command Hook 正常、跳过或失败 stdout 均为 `{}`、exit 0；诊断不混入 stdout。缺 session_id 不创建队列 / cursor；Stop / PreCompact 缺 transcript_path 或不可读不推进 cursor，PostToolUse 不依赖它。产品诊断通过 Loguru 写 logs/capture-<time>-<pid>.jsonl.gz，进程独占，包含 UTC、事件、可用 session key、阶段及错误码；原 capture-errors.log 保留为历史。短生命周期 Hook 结束时由库排空 / 压缩及执行 7 天 retention；诊断失败继续原 Hook。后台 / MCP 使用独立 JSONL、5 MB 轮转与相同 retention，白名单元数据不含正文、输入输出、凭证或完整异常 payload；PM 不导入 Loguru，只向父进程交付有界 code / 固定 stage。
 
 `POST /v1/material-notifications` 仅发 `{connector:"codex", session_key}`，worker 校验 key 并扫描已存在队列。Hook 使用既有实例地址和授权，连接与发送共用 200ms I/O 截止时间，不读取响应、不重试、不启动后台或发送进程；后台不存在 / 失效跳过。此规则仅针对采集通知，SessionStart / UserPromptSubmit 的服务启动属于 M01 / M07。
 

@@ -56,7 +56,7 @@ SQLite 增补：Create `src/distillai/state.py`（只封装具体控制状态 SQ
 - [ ] **R5.1 字段模型复用。** 配置、SourceRef / RecordRef、工具参数和各模块记录的结构用 Pydantic strict / extra=forbid 及 TypeAdapter；共用引用模型在 `sources.py`，领域结构留归属模块。工具 schema 由同一模型生成，已有上游 JSON Schema 用 jsonschema 校验；删除被替代的字段类型 / required / 枚举遍历，保留跨记录来源、权限、前后版本 / 业务判断。字段错误仍能映射原 API 路径，既有非整数 / bool / 非有限数 / 未知字段用例结果不变。
 - [x] **R5.2 复用 pywin32 绑定。** 在 `windows.py` 用 win32job / win32file / win32api 已有封装替换覆盖到的 ctypes 声明与结构，保持原访问掩码 / share mode / flags；Job limits 用库的字典结构，句柄用 PyHANDLE 管理。对 NtCreateFile 根句柄相对打开 / rename、未覆盖的挂起恢复等列出残余窄适配和原因，不重写 ntdll SDK。复跑全部实际 Windows 组，覆盖路径替换、元数据 / ADS / 硬链接和父子孙停树；库能 import 不等于这些行为通过。
 - [x] **R5.3 复用普通文件锁。** `Store.locked` 与启动 `_lease` 改用 Portalocker 的文件锁 / RLock，Store 外层仍用 threading.RLock 保证跨线程串行，启动竞争使用非阻塞获取。核对相同锁文件身份、嵌套计数、释放和异常；保留现有跨进程用例，补旧用例没有的嵌套 / 跨线程路径。不得用普通 sidecar lock 替换文件发布的句柄身份保护。
-- [ ] **R5.4 用 Loguru 写诊断。** 产品解释器内配置 `logger.add` 的 serialize、rotation / retention / compression，业务直接 `logger.bind` 附 task / session / stage / error_code；不写 Formatter、文件轮转 / 清理器或 Logger 抽象。显式 diagnose=False / backtrace=False，不记录任意异常正文、原文或 key。后台队列 sink 在退出 complete；产品 Hook / MCP 进程分别初始化独占 sink。PM 任务进程沿 Hermes 日志配置，产品诊断只传白名单字段给父进程落 Loguru，不在 PM 导入 Loguru，不把 enqueue=True 当跨解释器共享队列。MCP stdout 只协议，日志故障继续回答。Store.event 的持久事件保留原语义，SQLite 已接管的控制状态不能依靠诊断日志恢复。
+- [x] **R5.4 用 Loguru 写诊断。** 产品解释器内配置 `logger.add` 的 serialize、rotation / retention / compression，业务直接 `logger.bind` 附 task / session / stage / error_code；不写 Formatter、文件轮转 / 清理器或 Logger 抽象。显式 diagnose=False / backtrace=False，不记录任意异常正文、原文或 key。后台队列 sink 在退出 complete；产品 Hook / MCP 进程分别初始化独占 sink。PM 任务进程沿 Hermes 日志配置，产品诊断只传白名单字段给父进程落 Loguru，不在 PM 导入 Loguru，不把 enqueue=True 当跨解释器共享队列。MCP stdout 只协议，日志故障继续回答。Store.event 的持久事件保留原语义，SQLite 已接管的控制状态不能依靠诊断日志恢复。
 - [x] **R5.5 用 FastAPI 官方测试工具。** API / Web / 授权 / 参数 / 错误 / Cookie 组直接 `from fastapi.testclient import TestClient`，`with TestClient(app)` 管理 lifespan；用 `app.dependency_overrides` 注入临时 Store / Runtime / 授权依赖，finally 清空。删除手写 HTTP 测试客户端 / 服务线程；HTTPX MockTransport 只替外部上游，不替被测 app。现有 unittest 可直接使用 TestClient，不因为官网示例用 pytest 就迁移全部测试。socket / 流式断开 / PM 跨进程计数 / Job 仍真实验证；Connection 验错 authkey / 超长消息 / EOF / 取消及跨解释器往返，断言公开结果和无副作用。
 - [x] **R5.6 复用启动配置加载。** `startup.py` / `__main__.py` 用 pydantic-settings 的 BaseSettings 和内置 JSON source 读取启动位置；显式固定 CLI 参数 → 获准 DISTILLAI 环境 → 指定数据根 launch.json → 默认值优先级。关闭 dotenv 与未声明 secret 目录源，不读个人 Hermes 配置；原 CLI 由 argparse 解析后传入初始化源。版本化业务 Config 不用环境热更新，任务仍引用固定私有版本。复用 startup / config 用例验证路径优先级、缺参和敏感字段不输出。
 - [x] **R5.7 复用定时触发。** FastAPI lifespan 中启动单个 APScheduler 3.x AsyncIOScheduler，用 IntervalTrigger 调用原扫描 / 外扩资格检查、DateTrigger 调用已有 episode 到期判定；修改配置 / 新轮开始分别 reschedule / remove_job。只用内存 job store，重启从原持久终止 UTC / 外扩进度重建并立即检查已到期事件，max_instances=1 / coalesce 防重复唤醒。episode 的一次性到期 job 显式设 misfire_grace_time=None，允许进程未重启但休眠 / 暂停跨过截止时间后补执行；仍使用原截止和事件代次，不从恢复时刻重新计时。周期扫描 / 外扩只合并唤醒并检查当前资格，不补造每个错过时刻的业务任务。回调仍复核来源、事件代次 / 权限 / 固定输入再登记 Runtime 任务；不复制 APScheduler 调度算法，不让 scheduler job 的成功状态代替业务提交，不另设 APScheduler 数据库或 Redis。
@@ -128,6 +128,10 @@ IPC 六项实际 Windows 组覆盖未连 / 未认证 / 不回复、双向阻塞�
 ## 2026-10-17 第五批：HTTP 与 MCP 请求模型
 
 FastAPI 各写路由绑定 Pydantic 请求模型，先执行原认证 / 实际 body 字节限制再校验，业务仍在框架线程与 Store 锁内。配置版本非整数保留 409，部分配置错误仍返回字段路径，任务 / 重试 / 停机等旧错误码与无副作用回归通过。完整产品 193 项与浏览器 5 项通过，R2.2 完成；R5.1 剩余 IPC / 生命周期 / 交付 / 持久控制结构继续清点。见[总 Plan](../../plan.md)第五批。
+
+## 2026-10-17 第六批：Loguru 进程日志与停机排空
+
+后台 / Runtime / 父执行器采用 Loguru 独占进程 sink、白名单字段、UTC、排空、轮转 / 压缩 / retention；ChildDiagnostic 在父进程校验并只记录 code / stage，PM 实际导入未加载 Loguru 等产品框架。独立调度任务先由公开事件排空再 shutdown，新增回归由旧实现失败转通过，完整产品 197 项及浏览器 5 项通过，R5.4 完成。见[总 Plan](../../plan.md)第六批。
 
 <a id="historical-execution"></a>
 

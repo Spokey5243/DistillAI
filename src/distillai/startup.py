@@ -16,12 +16,14 @@ from urllib.parse import urlsplit
 import httpx
 import anyio
 import portalocker
-from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
+from loguru import logger
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED, EVENT_JOB_MISSED, EVENT_JOB_SUBMITTED
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from .server import BackendServer
 from .storage import atomic_json
+from .diagnostics import diagnostic_sink
 
 
 HERMES_SHA = "a7b2ba02e3b9bb95d0cac87a6312cc82a3bc3eed"
@@ -198,25 +200,46 @@ async def service_lifespan(runtime, control, *, material_register=None):
     scan_lock = threading.Lock()
     scan_requested = threading.Event()
     intervals, lifecycle_versions = {}, {}
+    scheduled_jobs = set()
+    jobs_idle = asyncio.Event()
+    jobs_idle.set()
+
+    def job_activity(event):
+        # All jobs coalesce and allow one instance, so each ID has at most one future.
+        if event.code == EVENT_JOB_SUBMITTED:
+            scheduled_jobs.add(event.job_id)
+            jobs_idle.clear()
+        else:
+            scheduled_jobs.discard(event.job_id)
+            if not scheduled_jobs:
+                jobs_idle.set()
 
     def close_episode(key):
         from .episode import register_close
-        if not runtime.store.state.failed:
-            register_close(runtime, key)
-            runtime.wake()
+        try:
+            if not runtime.store.state.failed:
+                register_close(runtime, key)
+                runtime.wake()
+        except Exception as error:
+            logger.bind(component="backend", session_key=key, stage="closing",
+                error_code=type(error).__name__).error("closing_registration_failed")
 
     def explore():
         from .expansion import tick
-        if not runtime.store.state.failed:
-            tick(runtime)
+        try:
+            if not runtime.store.state.failed:
+                tick(runtime)
+        except Exception as error:
+            logger.bind(component="backend", stage="exploration",
+                error_code=type(error).__name__).error("exploration_registration_failed")
 
     def scan():
         with scan_lock:
             scan_requested.clear()
-            if runtime.store.state.failed:
-                runtime.close()
-                return
             try:
+                if runtime.store.state.failed:
+                    runtime.close()
+                    return
                 runtime.finish_post_commits()
                 runtime.discover_materials(register=material_register)
                 from .context import reconcile_feedback
@@ -243,12 +266,18 @@ async def service_lifespan(runtime, control, *, material_register=None):
                         scheduler.add_job(close_episode, "date", id=identifier, args=[path.stem],
                             run_date=datetime.fromisoformat(record["deadline"].replace("Z", "+00:00")),
                             misfire_grace_time=None, max_instances=1, coalesce=True)
-            except sqlite3.Error:
+            except sqlite3.Error as error:
+                logger.bind(component="backend", stage="scan", error_code=type(error).__name__).error("control_state_unavailable")
                 runtime.store.state.failed = True
-                runtime.close()
+                try:
+                    runtime.close()
+                except Exception as stop_error:
+                    logger.bind(component="backend", stage="stop", error_code=type(stop_error).__name__).error("stop_pending")
+            except Exception as error:
+                logger.bind(component="backend", stage="scan", error_code=type(error).__name__).error("material_scan_failed")
 
     def wake():
-        if scheduler.running and scheduler.get_job("scan") is not None:
+        if not control.stopping.is_set() and scheduler.running and scheduler.get_job("scan") is not None:
             scan_requested.set()
             scheduler.modify_job("scan", next_run_time=datetime.now(timezone.utc))
 
@@ -265,6 +294,7 @@ async def service_lifespan(runtime, control, *, material_register=None):
                       max_instances=1, coalesce=True)
     scheduler.add_job(explore, "interval", seconds=3600, id="expansion", max_instances=1, coalesce=True)
     scheduler.add_listener(scan_finished, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
+    scheduler.add_listener(job_activity, EVENT_JOB_SUBMITTED | EVENT_JOB_EXECUTED | EVENT_JOB_ERROR | EVENT_JOB_MISSED)
     scheduler.start()
     runtime.on_wake = lambda: loop.call_soon_threadsafe(wake)
     instance = {"instance_id": control.instance_id, "pid": os.getpid(), "protocol": 1,
@@ -274,6 +304,7 @@ async def service_lifespan(runtime, control, *, material_register=None):
         while not control.server.started:
             await anyio.sleep(.01)
         await anyio.to_thread.run_sync(lambda: atomic_json(runtime.store.home / "instance.json", instance))
+        logger.bind(component="backend", stage="ready").info("backend_ready")
 
     async with anyio.create_task_group() as group:
         group.start_soon(stop_requested)
@@ -284,8 +315,10 @@ async def service_lifespan(runtime, control, *, material_register=None):
             runtime.on_wake = None
             control.stopping.set()
             scheduler.pause()
-            scheduler.shutdown(wait=True)
             with anyio.CancelScope(shield=True):
+                # AsyncIOExecutor.shutdown cancels futures even with wait=True.
+                await jobs_idle.wait()
+                scheduler.shutdown(wait=True)
                 def finish():
                     with scan_lock:
                         runtime.close()
@@ -295,7 +328,7 @@ async def service_lifespan(runtime, control, *, material_register=None):
 
 def run_service(runtime, *, material_register=None):
     home = runtime.store.home
-    with _lease(home) as owned:
+    with diagnostic_sink(home, "backend"), _lease(home) as owned:
         if not owned:
             deadline = time.monotonic() + 10
             while time.monotonic() < deadline:
@@ -305,6 +338,7 @@ def run_service(runtime, *, material_register=None):
             raise RuntimeError("Another process owns this data root but has not become healthy")
         if live_instance(home) is not None:
             return
+        logger.bind(component="backend", stage="startup").info("backend_starting")
         runtime.recover_tasks()
         if not hasattr(runtime, "knowledge_index"):
             from .knowledge import KnowledgeIndex
@@ -313,6 +347,7 @@ def run_service(runtime, *, material_register=None):
                 runtime.knowledge_index.rebuild()
             except Exception as error:
                 runtime.store.event({"event": "knowledge_index_pending", "code": type(error).__name__})
+                logger.bind(component="backend", stage="index", error_code=type(error).__name__).warning("knowledge_index_pending")
         @asynccontextmanager
         async def lifespan(app):
             async with service_lifespan(runtime, app.state.control, material_register=material_register):
@@ -326,6 +361,7 @@ def run_service(runtime, *, material_register=None):
                     runtime.close()
                     break
                 except Exception as exc:
+                    logger.bind(component="backend", stage="stop", error_code=type(exc).__name__).error("stop_pending")
                     try:
                         runtime.store.event({"event": "stop_pending", "error": type(exc).__name__})
                     except (OSError, sqlite3.Error):
@@ -339,3 +375,4 @@ def run_service(runtime, *, material_register=None):
                     current = json.loads(path.read_text(encoding="utf-8"))
                     if current["instance_id"] == server.instance_id:
                         path.unlink()
+            logger.bind(component="backend", stage="stop").info("backend_stopped")

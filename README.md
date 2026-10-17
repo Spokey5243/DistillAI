@@ -83,6 +83,8 @@ $DataHome = Join-Path $env:TEMP 'distillai-local-check'
 
 队列先同步，cursor 后替换。写锁竞争时正文等待后续 Hook 补读，本次工具摘要可能丢失；队列成功而 cursor 保存失败时可能重采到新行，不承诺跨位置去重。只修复尚未登记的残缺尾部，字段非法或中段损坏保留并停止，不重编号。错误诊断仅记录事件、session key、阶段、UTC 和错误码，不保存 payload / 正文 / 异常全文。
 
+产品诊断使用 Loguru：数据根 logs 下每个后台 / MCP / 采集进程独占带时间和 PID 的文件。后台 / MCP 的 JSONL 达 5 MB 后轮转并 gzip；短生命周期采集诊断结束即压缩。7 天 retention 由 Loguru 在轮转（采集为结束）时执行；旧 capture-errors.log 保留。退出会排空日志队列，日志故障继续业务；stdout 保留给 MCP / Hook 协议。任务输入、输出和恢复依据仍在业务版本 / SQLite 中，诊断日志只用于定位错误。
+
 采集通知只发送 connector / key，连接与发送共用 200ms 截止，不读响应、不重试、不启动后台。服务失效仍可采集；后台启动及轮询扫描 LF 完成的有效连续行，坏行之后暂不登记。任务登记与采集 cursor 分开，业务处理位置由 M03 结果提交后维护，通知 202 不代表业务处理完成。当前不启用个人会话，G2 的真实 Desktop 触发与 M03 生命周期仍待验证。
 
 ## episode 与知识基础（M03 / M04，实施中）

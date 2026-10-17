@@ -58,6 +58,10 @@ uv run --locked python tests/test_capture.py
 
 QueueLocator / QueueRef 共用严格会话定义，通知请求复用同一结构；产品外部来源 / 用户提交记录接入 discriminated union，URL / UTC / 实际注册身份与不可变历史版本仍独立核对。原始 Codex payload 继续沿实际格式解析，不把外部可扩展事件强制关字段。完整产品 193 项通过，真实 G2 仍未验。见[总 Plan](../../plan.md)第五批。
 
+## 2026-10-17 第六批：Loguru 进程日志与停机排空
+
+产品采集诊断改为每进程独占 logs/capture-<time>-<pid>.jsonl.gz，Loguru 在这一条诊断结束时 complete / remove、压缩并执行 retention；旧日志保留。两个真实 Python 进程的独立文件 / 实际 PID / 无正文断言通过，产品采集 11 项及完整产品 197 项通过。Hook stdout / 失败继续策略保持，Desktop 仍待 G2。见[总 Plan](../../plan.md)第六批。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

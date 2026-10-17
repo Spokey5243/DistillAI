@@ -373,6 +373,8 @@ class Runtime:
         return any(a == b or a in b.parents or b in a.parents for a in targets(first) for b in targets(second))
 
     def _run(self, task_id):
+        from loguru import logger  # The PM task-child imports BudgetError, but never this product execution method.
+        logger.bind(component="backend", task_id=task_id, stage="execution").info("task_started")
         release = False
         try:
             with self.store.locked():
@@ -402,6 +404,8 @@ class Runtime:
                         self.store.publish(commit["id"], lambda: self._validate_publication(task_id, result))
                 self._complete(task)
         except Exception as exc:
+            logger.bind(component="backend", task_id=task_id, stage="execution",
+                error_code=type(exc).__name__).warning("task_execution_failed")
             try:
                 self._stop_tree(task_id)
                 release = True
@@ -421,6 +425,8 @@ class Runtime:
                             task["cancel_reason"] = str(exc)
                     self._save(task)
             except Exception as stop_error:
+                logger.bind(component="backend", task_id=task_id, stage="recovery",
+                    error_code=type(stop_error).__name__).error("task_recovery_pending")
                 if isinstance(exc, sqlite3.Error) or isinstance(stop_error, sqlite3.Error):
                     self.store.state.failed = True
                     self._accepting = False
@@ -456,6 +462,8 @@ class Runtime:
         task["status"] = "succeeded"
         task["error"] = None
         self._save(task)
+        from loguru import logger
+        logger.bind(component="backend", task_id=task["id"], stage="complete").info("task_succeeded")
 
     def _complete_pending(self, task):
         try:
@@ -464,6 +472,9 @@ class Runtime:
             task["status"] = "validating"
             task["error"] = {"code": "post_registration_pending", "cause": type(error).__name__}
             self._save(task)
+            from loguru import logger
+            logger.bind(component="backend", task_id=task["id"], stage="post_registration",
+                error_code=type(error).__name__).warning("post_registration_pending")
 
     def finish_post_commits(self):
         with self.store.locked():

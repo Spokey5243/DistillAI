@@ -66,6 +66,10 @@ uv run --locked python -m unittest discover -s tests -p 'test_product_feedback.p
 
 HTTP 查询 / 反馈与 FastMCP 原生签名共用 SessionKey、RequestText、RecordRef / QueueRef。空白 query、非法会话、外部网页冒充用户表现来源及未知字段在协议层拒绝，不到后端；实际 stdio 的工具、精确查询、反馈幂等与后台独立存活通过，零模型调用。后台版本 / 事实归属规则保持，Desktop 交付验收仍待 G2。见[总 Plan](../../plan.md)第五批。
 
+## 2026-10-17 第六批：Loguru 进程日志与停机排空
+
+stdio 进程配置独占 Loguru sink，取消未确认诊断直接 bind invocation / stage / error_code，日志失败继续协议。真实 PythonStdioTransport 在正常和 logger.add 模拟失败下都完成工具列表、精确查询、严格输入、反馈幂等，退出后后台保持存活；零模型生成，不替代 Desktop。完整产品 197 项通过。见[总 Plan](../../plan.md)第六批。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

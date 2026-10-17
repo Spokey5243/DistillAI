@@ -75,24 +75,15 @@ def summarize_tool(name, inputs):
 
 
 def diagnostic(home, event, key, stage, error):
-    sink = None
     try:
         from loguru import logger
-        path = Path(home) / "logs" / "capture-errors.log"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        record = {"at": now(), "event": event if event in ("Stop", "PreCompact", "PostToolUse") else "unknown",
-                  "key": key, "stage": stage, "code": type(error).__name__}
-        if getattr(error, "winerror", None) is not None:
-            record["winerror"] = error.winerror
-        sink = logger.add(path, serialize=True, rotation="5 MB", retention=5, compression="gz",
-                          diagnose=False, backtrace=False, encoding="utf-8",
-                          filter=lambda message: message["extra"].get("capture_diagnostic") is True)
-        logger.bind(capture_diagnostic=True, **record).warning("capture_failed")
+        from .diagnostics import diagnostic_sink
+        with diagnostic_sink(home, "capture"):
+            logger.bind(component="capture", event=event if event in ("Stop", "PreCompact", "PostToolUse") else "unknown",
+                session_key=key, stage=stage, error_code=type(error).__name__,
+                winerror=getattr(error, "winerror", None)).warning("capture_failed")
     except Exception:
         pass
-    finally:
-        if sink is not None:
-            logger.remove(sink)
 
 
 def _cursor(path, total):

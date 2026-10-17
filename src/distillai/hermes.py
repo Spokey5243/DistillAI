@@ -8,6 +8,9 @@ import sys
 import tempfile
 import uuid
 import threading
+from typing import Annotated, Literal, NotRequired, TypedDict
+
+from pydantic import ConfigDict, Field, TypeAdapter, with_config
 
 from .runtime import BudgetError
 from .sources import read_source
@@ -32,6 +35,16 @@ class HermesError(RuntimeError):
     def __init__(self, message, detail=None):
         super().__init__(message)
         self.detail = detail
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class ChildDiagnostic(TypedDict):
+    code: Annotated[str, Field(pattern=r"^[A-Za-z][A-Za-z0-9_]{0,63}$")]
+    stage: Literal["configuration", "tools", "initialize", "tool_manifest", "generation", "parse_result"]
+    message: NotRequired[Literal["Task setup did not match its fixed configuration"]]
+
+
+CHILD_DIAGNOSTIC = TypeAdapter(ChildDiagnostic)
 
 
 def _program_tool(frame, name, args):
@@ -242,6 +255,14 @@ class HermesExecutor:
                                     saved["model_output_version"] = version
                                     runtime._save(saved)
                             if child.returncode or arguments.get("error"):
+                                if arguments.get("error"):
+                                    try:
+                                        detail = CHILD_DIAGNOSTIC.validate_python(arguments["error"])
+                                    except ValueError:
+                                        raise HermesError("Invalid task error report") from None
+                                    from loguru import logger  # Only the parent executor imports the product logger.
+                                    logger.bind(component="backend", task_id=task["id"], stage=detail["stage"],
+                                        error_code=detail["code"]).warning("agent_failed")
                                 if runtime.task(task["id"]).get("budget_exhausted"):
                                     raise BudgetError("Task requested a generation after exhausting its budget")
                                 raise HermesError("AIAgent child did not complete", arguments.get("error"))

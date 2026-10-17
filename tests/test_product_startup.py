@@ -99,6 +99,56 @@ class StartupTests(unittest.TestCase):
 
 
 class SchedulerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_shutdown_drains_an_independent_scheduled_job_before_returning(self):
+        from datetime import datetime, timedelta, timezone
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from distillai.config import Config
+        from distillai.runtime import Runtime
+        from distillai.diagnostics import diagnostic_sink
+
+        class ReadyExplorer(AsyncIOScheduler):
+            def start(self, *args, **kwargs):
+                self.modify_job("scan", next_run_time=datetime.now(timezone.utc) + timedelta(hours=1))
+                self.modify_job("expansion", next_run_time=datetime.now(timezone.utc))
+                super().start(*args, **kwargs)
+
+        entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+        stop = asyncio.Event()
+        def explore(runtime):
+            entered.set()
+            release.wait(3)
+            finished.set()
+            raise ValueError("PRIVATE_SCHEDULED_BODY")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            store = Store(temporary)
+            runtime = Runtime(store, Config(store), lambda task, control: {}, lambda task, result: None)
+            control = SimpleNamespace(stopping=threading.Event(), instance_id="a" * 32,
+                url="http://127.0.0.1:8000", token="synthetic-only", server=SimpleNamespace(started=True, should_exit=False))
+            async def host():
+                async with service_lifespan(runtime, control):
+                    await stop.wait()
+            with diagnostic_sink(temporary, "backend"), self.assertNoLogs(level="ERROR"), \
+                    patch("distillai.startup.AsyncIOScheduler", ReadyExplorer), patch("distillai.expansion.tick", explore):
+                serving = asyncio.create_task(host())
+                try:
+                    self.assertTrue(await asyncio.to_thread(entered.wait, 2))
+                    stop.set()
+                    await asyncio.sleep(.1)
+                    self.assertFalse(serving.done(), "Shutdown returned while a scheduled write was still running")
+                    release.set()
+                    await asyncio.wait_for(serving, 2)
+                    self.assertTrue(finished.is_set())
+                finally:
+                    stop.set()
+                    release.set()
+                    await asyncio.wait_for(serving, 3)
+                    runtime.close()
+            logs = "".join(path.read_text(encoding="utf-8") for path in (Path(temporary) / "logs").glob("*.jsonl"))
+            self.assertNotIn("PRIVATE_SCHEDULED_BODY", logs)
+            self.assertTrue(any(json.loads(line)["record"]["extra"].get("error_code") == "ValueError"
+                for line in logs.splitlines()))
+
     async def test_late_deadline_runs_once_and_a_new_request_invalidates_the_old_deadline(self):
         from apscheduler.events import EVENT_JOB_EXECUTED
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
