@@ -83,6 +83,33 @@ class ContextTests(unittest.TestCase):
         runtime.dispatch()
         self.assertEqual(runtime.wait(started["task_id"])["status"], "failed")
 
+    def test_invalid_invocation_cannot_cancel_its_task_or_rewrite_the_record(self):
+        runtime = self.runtime()
+        identifier = uuid.uuid4().hex
+        task = context.start_query(runtime, "synthetic", "Explain this topic", identifier)
+        path = self.store.home / "events/queries" / (identifier + ".json")
+        original = json.loads(path.read_bytes())
+        atomic_json(path, {**original, "extra": "ignored"})
+        before = path.read_bytes()
+        with self.assertRaises(ValueError):
+            context.cancel_query(runtime, identifier, "client cancelled")
+        self.assertEqual(runtime.task(task["task_id"])["status"], "queued")
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_invocation_cannot_cancel_another_calls_task(self):
+        runtime = self.runtime()
+        first_id, second_id = uuid.uuid4().hex, uuid.uuid4().hex
+        first = context.start_query(runtime, "synthetic", "first synthetic query", first_id)
+        second = context.start_query(runtime, "synthetic", "second synthetic query", second_id)
+        path = self.store.home / "events/queries" / (first_id + ".json")
+        original = json.loads(path.read_bytes())
+        atomic_json(path, {**original, "task_id": second["task_id"]})
+        before = path.read_bytes()
+        with self.assertRaises(ValueError):
+            context.cancel_query(runtime, first_id, "cancel only the first call")
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual([runtime.task(value["task_id"])["status"] for value in (first, second)], ["queued", "queued"])
+
     def test_identical_queries_have_independent_call_ownership_and_early_cancel_is_sticky(self):
         runtime = self.runtime()
         first_id, second_id = uuid.uuid4().hex, uuid.uuid4().hex

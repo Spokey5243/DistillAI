@@ -11,7 +11,7 @@ from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
 from pydantic import ConfigDict, Field, TypeAdapter, with_config
 from .knowledge import _snapshot, _references, _text
-from .sources import DraftRecordRef, Identifier, NonblankText, RecordRef, SourceRef, now as timestamp, read_source, record_submission
+from .sources import DraftRecordRef, Identifier, NonblankText, RecordRef, SourceRef, Version, now as timestamp, read_source, record_submission
 from .storage import atomic_json, _hash, _identifier
 
 
@@ -33,6 +33,18 @@ FETCH_ARGS = TypeAdapter(FetchArgs)
 class WebCall(TypedDict):
     tool: Literal["web_search", "fetch_page"]
     arguments: dict[str, Any]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class CoverageState(TypedDict):
+    completed: dict[Identifier, Version]
+    waiting_since: Annotated[int | float, Field(allow_inf_nan=False)] | None
+    last_scheduled_at: Annotated[int | float, Field(allow_inf_nan=False)] | None
+    pending_task_id: Identifier | None
+    cursor: NotRequired[Identifier]
+
+
+COVERAGE_STATE = TypeAdapter(CoverageState)
 
 
 @with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
@@ -172,7 +184,7 @@ def web_tool(runtime, task_id, tool, args, response):
 
 def _state(runtime):
     path = runtime.store.home / "events" / "expansion-coverage.json"
-    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {
+    return COVERAGE_STATE.validate_json(path.read_bytes()) if path.exists() else {
         "completed": {}, "waiting_since": None, "last_scheduled_at": None, "pending_task_id": None}
 
 

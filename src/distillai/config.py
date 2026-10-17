@@ -3,7 +3,7 @@ from copy import deepcopy
 import json
 import sys
 from pathlib import Path
-from typing import Annotated, Any, Literal, TypedDict
+from typing import Annotated, Any, Literal, NotRequired, TypedDict
 from urllib.parse import urlsplit
 
 from pydantic import ConfigDict, Field, TypeAdapter, ValidationError, with_config
@@ -96,6 +96,19 @@ class ConfigValues(TypedDict):
 CONFIG_VALUES = TypeAdapter(ConfigValues)
 
 
+class LegacyConfigValues(ConfigValues):
+    search: NotRequired[_Search]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class PrivateConfig(TypedDict):
+    version: PositiveInt
+    values: LegacyConfigValues
+
+
+PRIVATE_CONFIG = TypeAdapter(PrivateConfig)
+
+
 @with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
 class UpdateArgs(TypedDict):
     # Config.update owns conflict status and detailed errors for partial patches.
@@ -120,6 +133,7 @@ class Config:
                 self._save({"version": 1, "values": deepcopy(DEFAULTS)})
 
     def _save(self, record):
+        PRIVATE_CONFIG.validate_python(record)
         current = self.store.state.current_config()
         version = record["version"]
         while (self.store.home / "config" / f"{version}.json").exists():
@@ -140,7 +154,9 @@ class Config:
                 raise ValueError("Invalid configuration version")
             version = self.store.state.current_config() if version is None else version
             path = self.store.home / "config" / f"{version}.json"
-            record = json.loads(path.read_text(encoding="utf-8"))
+            record = PRIVATE_CONFIG.validate_json(path.read_bytes())
+            if record["version"] != version:
+                raise ValueError("Private configuration belongs to another version")
             record["values"].setdefault("search", deepcopy(DEFAULTS["search"]))
             return record
 

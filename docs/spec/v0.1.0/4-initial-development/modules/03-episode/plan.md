@@ -60,6 +60,10 @@ M01 停机排空修复覆盖扫描、独立 exploration 与到期回调：先 pa
 
 生命周期记录用严格 TypeAdapter 读取，拒绝布尔 / 非整数计数、未知事件 / 字段和错属 session，并沿已有 UTC 规则核对时间；错误记录字节保持，不推进事件或关闭 episode。新增回归先复现旧实现继续推进再修复，原重启 / 暂停 / 迟到材料 / 关闭组通过。事件语义、计时和 Desktop 接入范围不变；实际 G2 / 物理休眠仍未验，详见[总 Plan](../../plan.md)第八批。
 
+## 2026-10-18 第十二批：持久游标读取校验
+
+state() 读取时复用已有 SessionState，核对 session 与所选队列；未知字段、布尔处理位置或跨 session 游标不被采用 / 改写，已存关键词保持原值。定向组、完整产品和实际 PM AIAgent Episode → M04 → M05 链通过，详见[总 Plan](../../plan.md)第十二批。没有新的生命周期推断，Desktop G2 / 终止信号条件不变。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

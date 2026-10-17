@@ -84,6 +84,10 @@ stdio 进程配置独占 Loguru sink，取消未确认诊断直接 bind invocati
 
 选材记录、当前轮指针与输出尝试复用 Pydantic / Candidate / RecordRef / Version，读取时核对轮次与 session；新增回归复现旧实现接受 bool / 未知字段、错 round_key，以及跨 session 指针读出别的选材并增加恢复次数，修复后错误字节保持。历史读取、筛选后登记、状态 / compact / 写出共用同一记录读取入口，不另建存储层。原有效选材 / 版本失效 / 两次 compact 与输出失败组继续通过；真实 Desktop 接收和采用仍未验，详见[总 Plan](../../plan.md)第十批。
 
+## 2026-10-18 第十二批：调用、反馈和请求边界
+
+查询调用 / 提前取消、待关联 / 已登记反馈和请求边界接入严格模型，复用 QueryArgs / FeedbackArgs / 来源引用。状态、重入和取消共用读取入口，核对关联任务种类、调用 / 反馈 ID 与固定请求；反馈记录同时核对 client_request_id hash 与文件名。先复现错指另一任务会取消错调用 / 报错请求状态，及坏边界 / 未知反馈字段仍推进关联，再补回归修复，坏字节与其他任务保持。完整产品 224 项、浏览器 5 项、真实 FastMCP PythonStdioTransport 两工具 / 幂等通过；预启动服务归测试管理，不能作为独立冷启动或 Desktop G2 证据。见[总 Plan](../../plan.md)第十二批，原外部验收 checkbox 保持未勾。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

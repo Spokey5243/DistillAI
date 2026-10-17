@@ -371,6 +371,16 @@ PM 实际 import distillai.hermes 后 Loguru / FastAPI / Uvicorn / FastMCP / Net
 
 实际 PM 导入产品框架集合为空（eleventh-pm-import.log）；合成离线迁移、重复核对、预算保留、整根回退及新采集拒绝回退通过（eleventh-migration.log）。全范围 Ruff、离线锁、32 份文档 / 457 个本地链接及 git diff 检查通过。统一 Design、M01 与待办同步，material_revision 仍为 3，无真实数据迁移或远端写入。R5.1 仍未勾选，下一步为私有配置、episode 游标、外扩覆盖及 M07 调用 / 反馈控制记录清点；外部验收和 Goal 未完成条件保持。
 
+## 2026-10-18 第十二批：配置、游标、覆盖及请求归属
+
+本批在 2fd50f496d1b4c779fcacfcbb0f17c7970d39475 上续接 M01-R5.1。私有配置复用 ConfigValues 的严格结构并核对文件版本，保留旧文件缺少 search 时的只读缺省；episode 游标读取接入原 SessionState 并核对 session，关键词保持原值。外扩覆盖复用 Identifier / Version 与严格有限数值；坏游标 / 时间 / 依据不再被读取采用或由 tick 改写。
+
+M07 查询记录区分直接结果 / 后台任务 / 提前取消，反馈区分 awaiting_source / registered；请求边界及嵌入的 QueryArgs / FeedbackArgs 沿归属模块复用。共同读取入口核对 task 种类、调用 / 反馈 ID 和请求内容，反馈文件名同时匹配请求 ID hash。先复现错绑查询会取消另一调用、错绑反馈会报告另一请求任务、布尔边界与未知字段仍被采用 / 推进，再补八项永久回归转绿；另加一项保护旧搜索配置缺省及原字节。既有提前取消、失败保留、来源唯一关联和幂等契约继续通过，没有更改公开载荷 / 持久格式或真实数据。
+
+最终完整产品 **224 tests / OK，96.860s**（twelfth-product-final.log），实际 Chromium **5 tests / OK，19.380s**（twelfth-browser.log）；定向配置 / Episode / 外扩 / 查询 / 反馈 / FastMCP 组 **55 tests / OK，9.164s**。复核补齐任务内反馈结构的同模型校验，缺失反馈不再抛未处理类型异常；定向反馈 / MCP **10 tests / OK，0.809s**（twelfth-feedback-final.log），对应坏输入回归先失败再通过。实际 PM AIAgent 的预算 / 工具组 **43** 个合成 provider 请求、Episode → M04 → M05 **22** 次、实际 Tavily keyless → M04 → M07 → 用户编辑 **14** 次生成通过（twelfth-direct-hermes.log、twelfth-episode.log、twelfth-expansion.log），生成 provider 仍是 localhost 合成响应，不作模型语义质量证明。PM 导入产品框架集合为空（twelfth-pm-import.log）。
+
+真实 FastMCP PythonStdioTransport 两工具、精确查询 / 严格参数 / 反馈幂等、stdio 退出后的预启动测试后台存活通过，零生成（twelfth-stdio.log）；服务由测试管理，不证明独立冷启动或 Desktop。合成离线迁移 / 重复核对 / 预算保留 / 回退 / 新采集拒绝覆盖通过（twelfth-migration.log），一次性校验非法配置不建版本、错 hash 反馈保留原字节（twelfth-extra-records.log）。全范围 Ruff、离线锁、32 份文档 / 461 个本地链接及 diff 检查通过，测试与 PM / stdio 探针均已退出。统一 Design、M01 / M03 / M06 / M07 和待办同步，material_revision 仍为 3；R5.1 继续审计 M05 重分析依赖及启动 / 采集控制结构，再做 R4.2 清理。无远端写入，Goal 不标整体完成。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

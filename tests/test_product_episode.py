@@ -40,6 +40,17 @@ class EpisodeTests(unittest.TestCase):
                      "candidates": [{"source_refs": [ref(5, 6)], "keywords": ["new"], "C": 0,
                                      "basis": [{"source_ref": ref(5), "quote": "new request"}], "reason": "independent request", "group": "new goal"}]}
 
+    def test_damaged_or_cross_session_cursor_is_not_adopted(self):
+        original = episode.state(self.home, KEY)
+        path = episode.state_path(self.home, KEY)
+        path.parent.mkdir(exist_ok=True)
+        for changed in ({"session_key": "other-session"}, {"processed_line": True}, {"extra": "ignored"}):
+            atomic_json(path, {**original, **changed})
+            before = path.read_bytes()
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                episode.state(self.home, KEY)
+            self.assertEqual(path.read_bytes(), before)
+
     def test_rounds_join_intermediate_and_final_assistant_without_counting_tools(self):
         rounds = episode.turns(self.home, KEY, 9)
         self.assertEqual([r["source_refs"] for r in rounds], [[ref(1, 2), ref(4)], [ref(5, 6)], [ref(7, 8)], [ref(9)]])

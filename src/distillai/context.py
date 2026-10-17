@@ -182,6 +182,52 @@ class FeedbackArgs(TypedDict):
     source_refs: list[QueueRef]
 
 
+class AssociatedFeedback(FeedbackArgs):
+    feedback_id: Version
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class InvocationRequest(TypedDict):
+    request: QueryArgs
+    cancel_reason: NotRequired[NonblankText]
+
+
+class PendingInvocation(InvocationRequest):
+    task_id: Identifier
+
+
+class DirectInvocation(InvocationRequest):
+    result_version: Version
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class CancelledInvocation(TypedDict):
+    cancel_reason: NonblankText
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class RequestBoundary(TypedDict):
+    sequence: Annotated[int, Field(ge=1)]
+    floor: Annotated[int, Field(ge=0)]
+    prompt: NonblankText
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class AwaitingFeedback(TypedDict):
+    request: FeedbackArgs
+    stage: Literal["awaiting_source"]
+    request_boundary: RequestBoundary | None
+
+
+class RegisteredFeedback(AwaitingFeedback):
+    stage: Literal["registered"]
+    task_id: Identifier
+
+
+INVOCATION_RECORD = TypeAdapter(PendingInvocation | DirectInvocation | CancelledInvocation)
+REQUEST_BOUNDARIES = TypeAdapter(list[RequestBoundary])
+FEEDBACK_RECORD = TypeAdapter(AwaitingFeedback | RegisteredFeedback)
+ASSOCIATED_FEEDBACK = TypeAdapter(AssociatedFeedback)
 QUERY_ARGS = TypeAdapter(QueryArgs)
 FEEDBACK_ARGS = TypeAdapter(FeedbackArgs)
 
@@ -190,6 +236,16 @@ def _invocation(runtime, identifier):
     folder = runtime.store.home / "events" / "queries"
     folder.mkdir(exist_ok=True)
     return folder / (_identifier(identifier) + ".json")
+
+
+def _read_invocation(runtime, identifier):
+    saved = INVOCATION_RECORD.validate_json(_invocation(runtime, identifier).read_bytes())
+    if "task_id" in saved:
+        task = runtime.task(saved["task_id"])
+        if task["kind"] != "query" or task["inputs"].get("invocation_id") != identifier or any(
+                task["inputs"].get(name) != value for name, value in saved["request"].items()):
+            raise ValueError("Query task belongs to another invocation")
+    return saved
 
 
 def _item(kind, identifier, version, record, reanalysis=()):
@@ -262,7 +318,7 @@ def start_query(runtime, session_key, query, invocation_id, knowledge_refs=None,
     with runtime.store.locked():
         path = _invocation(runtime, invocation_id)
         if path.exists():
-            saved = json.loads(path.read_text(encoding="utf-8"))
+            saved = _read_invocation(runtime, invocation_id)
             if "request" in saved and saved["request"] != request:
                 raise ConflictError("Query invocation already belongs to another request")
             return query_status(runtime, invocation_id)
@@ -286,7 +342,7 @@ def query_status(runtime, invocation_id):
             item["reanalysis"] = reanalysis(runtime.store, item["record_ref"]["id"])
         return result
     with runtime.store.locked():
-        saved = json.loads(_invocation(runtime, invocation_id).read_text(encoding="utf-8"))
+        saved = _read_invocation(runtime, invocation_id)
         if saved.get("cancel_reason"):
             return {"status": "cancelled", "reason": saved["cancel_reason"]}
         if "result_version" in saved:
@@ -306,7 +362,7 @@ def cancel_query(runtime, invocation_id, reason):
         raise ValueError("Query cancellation requires a reason")
     with runtime.store.locked():
         path = _invocation(runtime, invocation_id)
-        saved = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        saved = _read_invocation(runtime, invocation_id) if path.exists() else {}
         if "result_version" in saved:
             return query_status(runtime, invocation_id)
         saved["cancel_reason"] = reason
@@ -778,6 +834,11 @@ def write_selection(runtime, round_key, writer, *, compact=False):
         return True
 
 
+def _request_boundaries(runtime, session_key):
+    path = runtime.store.home / "events/requests" / (session_key + ".json")
+    return REQUEST_BOUNDARIES.validate_json(path.read_bytes()) if path.exists() else []
+
+
 def record_request(runtime, session_key, prompt):
     """Record a trusted UserPromptSubmit boundary; this is not a source identity."""
     queue_path(runtime.store.home, session_key)
@@ -787,7 +848,7 @@ def record_request(runtime, session_key, prompt):
         folder = runtime.store.home / "events" / "requests"
         folder.mkdir(exist_ok=True)
         path = folder / (session_key + ".json")
-        previous = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+        previous = _request_boundaries(runtime, session_key)
         rows, invalid = scan_queue(runtime.store.home, session_key)
         if invalid is not None:
             raise ValueError("Cannot anchor a request to an invalid source queue")
@@ -802,9 +863,22 @@ def _feedback_path(runtime, feedback_id):
     return folder / (_identifier(feedback_id, 64) + ".json")
 
 
+def _read_feedback(runtime, path):
+    saved = FEEDBACK_RECORD.validate_json(path.read_bytes())
+    if _hash(saved["request"]["client_request_id"].encode("utf-8")) != path.stem:
+        raise ValueError("Feedback record belongs to another request")
+    if "task_id" in saved:
+        task = runtime.task(saved["task_id"])
+        feedback = ASSOCIATED_FEEDBACK.validate_python(task["inputs"].get("feedback"))
+        if task["kind"] != "cognition" or task["trigger"] != "mcp_feedback" or feedback.get("feedback_id") != path.stem or any(
+                feedback.get(name) != value for name, value in saved["request"].items() if name != "source_refs" or value):
+            raise ValueError("Feedback task belongs to another request")
+    return saved
+
+
 def feedback_status(runtime, feedback_id):
     with runtime.store.locked():
-        saved = json.loads(_feedback_path(runtime, feedback_id).read_text(encoding="utf-8"))
+        saved = _read_feedback(runtime, _feedback_path(runtime, feedback_id))
         result = {"feedback_id": feedback_id, "stage": saved["stage"]}
         if "task_id" in saved:
             result["task_id"] = saved["task_id"]
@@ -828,11 +902,10 @@ def submit_feedback(runtime, request):
     with runtime.store.locked():
         path = _feedback_path(runtime, identifier)
         if path.exists():
-            if json.loads(path.read_text(encoding="utf-8"))["request"] != request:
+            if _read_feedback(runtime, path)["request"] != request:
                 raise ValueError("Feedback request ID already belongs to different content")
             return feedback_status(runtime, identifier)
-        boundary_path = runtime.store.home / "events" / "requests" / (request["session_key"] + ".json")
-        boundaries = json.loads(boundary_path.read_text(encoding="utf-8")) if boundary_path.exists() else []
+        boundaries = _request_boundaries(runtime, request["session_key"])
         saved = {"request": deepcopy(request), "stage": "awaiting_source",
                  "request_boundary": boundaries[-1] if boundaries else None}
         atomic_json(path, saved)
@@ -853,7 +926,7 @@ def _associate_feedback(runtime, path, saved):
         if not boundary or request["performance"] not in boundary["prompt"]:
             return
         rows, _ = scan_queue(runtime.store.home, request["session_key"])
-        boundaries = json.loads((runtime.store.home / "events/requests" / (request["session_key"] + ".json")).read_text(encoding="utf-8"))
+        boundaries = _request_boundaries(runtime, request["session_key"])
         later = [item["floor"] for item in boundaries if item["sequence"] > boundary["sequence"]]
         ceiling = min(later) if later else len(rows)
         matches = [position for position, row in enumerate(rows, 1) if boundary["floor"] < position <= ceiling
@@ -881,6 +954,6 @@ def reconcile_feedback(runtime):
     with runtime.store.locked():
         for path in sorted((runtime.store.home / "events" / "feedback").glob("*.json")):
             try:
-                _associate_feedback(runtime, path, json.loads(path.read_text(encoding="utf-8")))
+                _associate_feedback(runtime, path, _read_feedback(runtime, path))
             except (OSError, ValueError, KeyError) as error:
                 runtime.store.event({"event": "feedback_association_pending", "feedback_id": path.stem, "code": type(error).__name__})

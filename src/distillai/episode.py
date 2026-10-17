@@ -233,7 +233,11 @@ def state(home, key):
     if not path.exists():
         return {"connector": "codex", "session_key": key, "active_episode_id": None,
                 "buffer": [], "processed_line": 0, "material_updates": 0}
-    return json.loads(path.read_text(encoding="utf-8"))
+    record = json.loads(path.read_text(encoding="utf-8"))
+    SESSION_STATE.validate_python(record)
+    if record["session_key"] != key:
+        raise ValueError("Episode cursor belongs to another session")
+    return record
 
 
 def register_material(runtime, ref):

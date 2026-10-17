@@ -1,10 +1,11 @@
 """Versioned configuration must retain secrets, reject invalid input and freeze tasks."""
 import tempfile
+from copy import deepcopy
 from pathlib import Path
 import unittest
 
 from distillai.config import Config, ConfigError
-from distillai.storage import ConflictError, Store
+from distillai.storage import ConflictError, Store, atomic_json
 
 
 class ConfigTests(unittest.TestCase):
@@ -14,6 +15,26 @@ class ConfigTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.store = Store(self.root / "data")
         self.config = Config(self.store)
+
+    def test_damaged_private_configuration_is_not_adopted_or_rewritten(self):
+        original = self.config.private()
+        path = self.store.home / "config/1.json"
+        for changed in ({"version": True}, {"version": 2}, {"extra": "ignored"},
+                        {"values": {**original["values"], "runtime": {"max_model_calls": True, "poll_interval_seconds": 1}}}):
+            atomic_json(path, {**original, **changed})
+            before = path.read_bytes()
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                self.config.private()
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_legacy_private_configuration_without_search_keeps_original_bytes(self):
+        record = deepcopy(self.config.private())
+        del record["values"]["search"]
+        path = self.store.home / "config/1.json"
+        atomic_json(path, record)
+        before = path.read_bytes()
+        self.assertEqual(self.config.private()["values"]["search"], {"api_key": ""})
+        self.assertEqual(path.read_bytes(), before)
 
     def test_initial_values_and_invalid_update_preserves_version(self):
         current = self.config.read()

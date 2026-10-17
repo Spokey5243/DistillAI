@@ -58,6 +58,10 @@ uv run --locked python -m unittest discover -s tests -p 'test_product_expansion.
 
 显式扩展请求由本模块严格 RequestArgs 校验，继续核对不同知识 ID、实际版本、配置批量限制和来源身份。实际 PM + 真实 Tavily keyless 的扩展 / M04 / M07 / 用户编辑 5 / 3 / 3 / 3 次在新来源结构校验下复跑通过。见[总 Plan](../../plan.md)第五批。
 
+## 2026-10-18 第十二批：覆盖持久结构
+
+覆盖状态读取采用严格模型，复用 Identifier / Version，时间值拒绝 bool / 非有限数，保留可空时间 / 任务和既有 cursor。坏记录不推进等待或改写覆盖文件，不登记额外任务；原周期 / 公平 / 成功才覆盖规则继续通过。实际 Tavily keyless → M04 → M07 / 用户编辑合成链 14 次生成通过，详见[总 Plan](../../plan.md)第十二批，不充当真实模型语义验收。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

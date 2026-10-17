@@ -63,6 +63,18 @@ class ExpansionTests(unittest.TestCase):
         self.assertEqual(done["status"], "succeeded", done["error"])
         return done
 
+    def test_invalid_coverage_is_not_adopted_or_advanced(self):
+        original = {key: value for key, value in expansion.status(self.runtime).items() if key != "unavailable_reason"}
+        path = self.store.home / "events/expansion-coverage.json"
+        for changed in ({"waiting_since": True}, {"last_scheduled_at": float("inf")},
+                        {"completed": {A: "not-a-version"}}, {"extra": "ignored"}):
+            path.write_text(json.dumps({**original, **changed}), encoding="utf-8")
+            before = path.read_bytes()
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                expansion.tick(self.runtime, now=3600)
+            self.assertEqual(path.read_bytes(), before)
+            self.assertEqual(self.runtime.tasks(), [])
+
     def test_period_batch_and_progress_survive_config_changes(self):
         self.assertIsNone(expansion.tick(self.runtime, now=0))
         self.assertIsNone(expansion.tick(self.runtime, now=3599))
