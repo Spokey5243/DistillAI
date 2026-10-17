@@ -122,6 +122,7 @@ class KnowledgeIndex:
         self._index = None
 
     def rebuild(self):
+        import networkx as nx
         with self.store.locked():
             self._index = None
             records, versions = _snapshot(self.store)
@@ -140,15 +141,14 @@ class KnowledgeIndex:
                         edges[identifier] = {**ref, "source_knowledge_id": record["source_knowledge_id"],
                                              "target_knowledge_id": record["target_knowledge_id"],
                                              "symmetric": record.get("symmetric", False)}
-            incoming, outgoing = {key: set() for key in nodes}, {key: set() for key in nodes}
+            graph = nx.MultiDiGraph()
+            graph.add_nodes_from(nodes.items())
             for identifier, edge in edges.items():
                 source, target = edge["source_knowledge_id"], edge["target_knowledge_id"]
-                outgoing[source].add(identifier)
-                incoming[target].add(identifier)
+                graph.add_edge(source, target, key=identifier, **edge)
                 if edge["symmetric"]:
-                    incoming[source].add(identifier)
-                    outgoing[target].add(identifier)
-            self._index = {"names": names, "nodes": nodes, "edges": edges, "in": incoming, "out": outgoing}
+                    graph.add_edge(target, source, key=identifier, **edge)
+            self._index = {"names": names, "graph": graph}
 
     def lookup(self, name):
         if not _text(name):
@@ -188,16 +188,20 @@ class KnowledgeIndex:
         with self.store.locked():
             if self._index is None:
                 raise IndexNotReady("Knowledge index is not ready; details remain readable")
-            if identifier not in self._index["nodes"]:
+            graph = self._index["graph"]
+            if identifier not in graph:
                 raise FileNotFoundError("Knowledge point not found")
             neighbors, relations = {}, []
             directions = ("in", "out") if direction == "both" else (direction,)
-            selected = set().union(*(self._index[part][identifier] for part in directions))
+            selected = {}
+            for part in directions:
+                edges = graph.in_edges(identifier, keys=True, data=True) if part == "in" else graph.out_edges(identifier, keys=True, data=True)
+                selected.update((key, edge) for _, _, key, edge in edges)
             for edge_id in sorted(selected):
-                edge = self._index["edges"][edge_id]
+                edge = selected[edge_id]
                 source, target = edge["source_knowledge_id"], edge["target_knowledge_id"]
                 other = source if target == identifier else target
-                neighbors[other] = self._index["nodes"][other]
+                neighbors[other] = graph.nodes[other]
                 relations.append({name: value for name, value in edge.items() if name != "symmetric"})
             return {"knowledge_refs": [deepcopy(neighbors[key]) for key in sorted(neighbors)], "relations": relations}
 

@@ -347,7 +347,7 @@ def register_prepare(runtime, session_key, episode_ref, material_updates, reason
                 task["dedup"] = runtime._dedup("context", inputs, "context_refresh", task["scope"])
                 runtime._save(task)
                 runtime.store.event({"event": "context_prepare_merged", "task_id": task["id"], "before": previous, "after": task["input_version"]})
-                runtime._wake.set()
+                runtime.wake()
                 return task
         prompt = (Path(__file__).parent / "prompts/context.txt").read_text(encoding="utf-8")
         return runtime.register("context", inputs, "context_refresh", scope=scope, dependencies=dependencies, prompt=prompt)
@@ -692,7 +692,7 @@ def submit_feedback(runtime, request):
                  "request_boundary": boundaries[-1] if boundaries else None}
         atomic_json(path, saved)
         _associate_feedback(runtime, path, saved)
-        runtime._wake.set()
+        runtime.wake()
         return feedback_status(runtime, identifier)
 
 

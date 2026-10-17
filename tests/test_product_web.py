@@ -1,15 +1,14 @@
 """Browser sessions exchange one-use bootstrap credentials and require CSRF for writes."""
-from http.client import HTTPConnection
 import json
 from pathlib import Path
 from urllib.parse import urlencode
 import tempfile
-import threading
 import unittest
 
 from distillai.config import Config
 from distillai.runtime import Runtime
-from distillai.server import BackendServer
+from distillai.server import create_app, get_runtime
+from fastapi.testclient import TestClient
 from distillai.storage import Store, atomic_json
 
 
@@ -20,27 +19,19 @@ class WebTests(unittest.TestCase):
         store = Store(Path(self.temp.name))
         self.runtime = Runtime(store, Config(store), lambda task, control: {}, lambda task, result: None)
         self.addCleanup(self.runtime.close)
-        self.server = BackendServer(self.runtime)
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
-        self.thread.start()
-        self.addCleanup(self.stop)
-
-    def stop(self):
-        self.server.shutdown()
-        self.thread.join(5)
-        self.server.server_close()
+        app = create_app(self.runtime)
+        app.dependency_overrides[get_runtime] = lambda: self.runtime
+        self.server = app.state.control
+        self.client = self.enterContext(TestClient(app, base_url=self.server.url, follow_redirects=False))
+        self.addCleanup(app.dependency_overrides.clear)
 
     def request(self, path, *, method="GET", body=None, headers=None):
-        connection = HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
-        try:
-            connection.request(method, path, body=json.dumps(body).encode() if body is not None else None,
-                headers={"Content-Type": "application/json", **(headers or {})})
-            response = connection.getresponse()
-            data = response.read()
-            content = response.getheader("Content-Type", "")
-            return response.status, dict(response.getheaders()), (json.loads(data) if "application/json" in content else data.decode("utf-8")) if data else None
-        finally:
-            connection.close()
+        self.client.cookies.clear()
+        response = self.client.request(method, path, json=body,
+            headers={"Content-Type": "application/json", **(headers or {})})
+        content = response.headers.get("Content-Type", "")
+        value = (response.json() if "application/json" in content else response.text) if response.content else None
+        return response.status_code, response.headers, value
 
     def session(self):
         status, _, body = self.request("/internal/web/bootstrap", method="POST", body={},
@@ -52,7 +43,7 @@ class WebTests(unittest.TestCase):
         self.assertEqual(status, 303)
         self.assertEqual(headers["Location"], "/")
         self.assertIn("HttpOnly", headers["Set-Cookie"])
-        self.assertIn("SameSite=Strict", headers["Set-Cookie"])
+        self.assertIn("samesite=strict", headers["Set-Cookie"].lower())
         cookie = headers["Set-Cookie"].split(";", 1)[0]
         self.assertEqual(self.request(path)[0], 401)
         status, _, body = self.request("/v1/web/session", headers={"Cookie": cookie})

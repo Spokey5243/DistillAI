@@ -1,21 +1,46 @@
 """Data-root singleton ownership and native client startup/stop helpers."""
-from contextlib import contextmanager
+from contextlib import contextmanager, asynccontextmanager
+from datetime import datetime, timezone
+import asyncio
 import json
-import msvcrt
 import os
 from pathlib import Path
 import subprocess
+import sqlite3
+import sys
 import threading
 import time
 import uuid
+import importlib
 from urllib.parse import urlsplit
-from urllib.request import build_opener, ProxyHandler, Request
+import httpx
+import anyio
+import portalocker
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 
-from .server import BackendServer, _NoRedirect
+from .server import BackendServer
 from .storage import atomic_json
 
 
 HERMES_SHA = "a7b2ba02e3b9bb95d0cac87a6312cc82a3bc3eed"
+
+
+def load_launch(home, **overrides):
+    from pydantic_settings import BaseSettings, JsonConfigSettingsSource, SettingsConfigDict
+
+    class Launch(BaseSettings):
+        model_config = SettingsConfigDict(env_prefix="DISTILLAI_", env_file=None, secrets_dir=None,
+            json_file=Path(home) / "config/launch.json", extra="ignore")
+        hermes_source: str | None = None
+        hermes_python: str | None = None
+
+        @classmethod
+        def settings_customise_sources(cls, settings_cls, init_settings, env_settings, dotenv_settings, file_secret_settings):
+            return init_settings, env_settings, JsonConfigSettingsSource(settings_cls)
+
+    return Launch(**{name: value for name, value in overrides.items() if value is not None})
 
 
 def check_environment(source, python):
@@ -28,14 +53,16 @@ def check_environment(source, python):
                            check=True, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW).stdout.strip()
     if revision != HERMES_SHA or dirty:
         raise ValueError("Hermes source does not match the clean, verified G1 revision")
-    lock = Path(__file__).resolve().parents[2] / "uv.lock"
+    for name in ("fastapi", "uvicorn", "httpx", "fastmcp", "pydantic", "loguru", "networkx"):
+        importlib.import_module(name)
     code = (
-        "import sys,json,tomllib,importlib.metadata as m;from mcp.server import MCPServer;"
-        f"packages=tomllib.load(open({str(lock)!r},'rb'))['package'];"
+        "import sys,json,importlib.metadata as m;"
+        f"sys.path.insert(0,{str(source)!r});"
+        "import hermes_cli.env_loader as loader;loader.load_hermes_dotenv=lambda **kwargs:[];"
+        "from run_agent import AIAgent;"
         "assert sys.version_info >= (3,13);"
-        "assert all(p['name']=='distillai' or m.version(p['name'])==p['version'] for p in packages);"
         "print(json.dumps({'python':sys.executable,'base_python':sys._base_executable,'prefix':sys.prefix,'python_version':sys.version.split()[0],"
-        "'base_prefix':sys.base_prefix,'mcp_version':m.version('mcp')}))")
+        "'base_prefix':sys.base_prefix,'openai_version':m.version('openai'),'httpx_version':m.version('httpx')}))")
     checked = subprocess.run([str(python), "-I", "-B", "-c", code], check=True,
                              capture_output=True, text=True, timeout=30, creationflags=subprocess.CREATE_NO_WINDOW)
     details = json.loads(checked.stdout)
@@ -61,15 +88,24 @@ def data_home(home=None):
     return Path(home or os.environ.get("DISTILLAI_HOME", Path.home() / ".distillAI")).resolve()
 
 
-def instance_request(instance, path, *, method="GET", body=None, timeout=3):
+def instance_url(instance):
     url = urlsplit(instance["url"])
     if url.scheme != "http" or url.hostname != "127.0.0.1" or not url.port or url.path or url.query or url.fragment or url.username:
         raise ValueError("Invalid local instance address")
-    request = Request(instance["url"] + path,
-        data=json.dumps(body).encode("utf-8") if body is not None else None, method=method,
-        headers={"Authorization": "Bearer " + instance["token"], "Content-Type": "application/json"})
-    with build_opener(ProxyHandler({}), _NoRedirect()).open(request, timeout=timeout) as response:
-        data = response.read(2 * 1024 * 1024 + 1)
+    return instance["url"]
+
+
+def instance_request(instance, path, *, method="GET", body=None, timeout=3):
+    address = instance_url(instance)
+    with httpx.Client(trust_env=False, follow_redirects=False, timeout=timeout) as client:
+        with client.stream(method, address + path, json=body,
+                headers={"Authorization": "Bearer " + instance["token"], "Content-Type": "application/json"}) as response:
+            response.raise_for_status()
+            data = bytearray()
+            for chunk in response.iter_bytes():
+                data.extend(chunk)
+                if len(data) > 2 * 1024 * 1024:
+                    raise ValueError("Local control response exceeds 2 MiB")
         if len(data) > 2 * 1024 * 1024:
             raise ValueError("Local control response exceeds 2 MiB")
         return json.loads(data)
@@ -84,29 +120,23 @@ def live_instance(home):
         if any(health[name] != instance[name] for name in ("instance_id", "pid", "protocol")):
             return None
         return {**instance, "ready": health["ready"]}
-    except (OSError, ValueError, TypeError, KeyError):
+    except (OSError, ValueError, TypeError, KeyError, httpx.HTTPError):
         return None
 
 
 @contextmanager
 def _lease(home):
     path = data_home(home) / ".instance.lock"
-    with path.open("a+b") as stream:
-        stream.seek(0, os.SEEK_END)
-        if not stream.tell():
-            stream.write(b"\0")
-            stream.flush()
-        stream.seek(0)
-        try:
-            msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
-        except OSError:
-            yield False
-            return
-        try:
-            yield True
-        finally:
-            stream.seek(0)
-            msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+    lease = portalocker.Lock(path, mode="a+b", timeout=0)
+    try:
+        lease.acquire()
+    except portalocker.LockException:
+        yield False
+        return
+    try:
+        yield True
+    finally:
+        lease.release()
 
 
 def start_background(home, command, timeout=10, *, python_launcher=None):
@@ -154,6 +184,115 @@ def stop_background(home, timeout=10):
     raise TimeoutError("Background has not confirmed task stop and service exit")
 
 
+def start_product(home):
+    product_src = str(Path(__file__).resolve().parents[1])
+    bootstrap = f"import sys;sys.path.insert(0,{product_src!r});from distillai.__main__ import main;main()"
+    return start_background(home, [sys._base_executable, "-I", "-B", "-c", bootstrap, "serve", "--home", str(home)],
+                            python_launcher=sys.executable)
+
+
+@asynccontextmanager
+async def service_lifespan(runtime, control, *, material_register=None):
+    loop = asyncio.get_running_loop()
+    scheduler = AsyncIOScheduler(timezone=timezone.utc)
+    scan_lock = threading.Lock()
+    scan_requested = threading.Event()
+    intervals, lifecycle_versions = {}, {}
+
+    def close_episode(key):
+        from .episode import register_close
+        if not runtime.store.state.failed:
+            register_close(runtime, key)
+            runtime.wake()
+
+    def explore():
+        from .expansion import tick
+        if not runtime.store.state.failed:
+            tick(runtime)
+
+    def scan():
+        with scan_lock:
+            scan_requested.clear()
+            if runtime.store.state.failed:
+                runtime.close()
+                return
+            try:
+                runtime.finish_post_commits()
+                runtime.discover_materials(register=material_register)
+                from .context import reconcile_feedback
+                from .lifecycle import tick, read
+                reconcile_feedback(runtime)
+                tick(runtime)
+                explore()
+                runtime.dispatch()
+                config = runtime.config.read()["values"]
+                for identifier, seconds in (("scan", config["runtime"]["poll_interval_seconds"]),
+                                             ("expansion", config["expansion"]["interval_seconds"])):
+                    if intervals.get(identifier) != seconds:
+                        scheduler.reschedule_job(identifier, trigger=IntervalTrigger(seconds=min(seconds, threading.TIMEOUT_MAX), timezone=timezone.utc))
+                        intervals[identifier] = seconds
+                for path in sorted((runtime.store.home / "events/lifecycle").glob("*.json")):
+                    record = read(runtime, path.stem)
+                    if lifecycle_versions.get(path.stem) == record["sequence"]:
+                        continue
+                    identifier = "episode:" + path.stem
+                    if scheduler.get_job(identifier) is not None:
+                        scheduler.remove_job(identifier)
+                    lifecycle_versions[path.stem] = record["sequence"]
+                    if record["deadline"] is not None and record["code"] is None:
+                        scheduler.add_job(close_episode, "date", id=identifier, args=[path.stem],
+                            run_date=datetime.fromisoformat(record["deadline"].replace("Z", "+00:00")),
+                            misfire_grace_time=None, max_instances=1, coalesce=True)
+            except sqlite3.Error:
+                runtime.store.state.failed = True
+                runtime.close()
+
+    def wake():
+        if scheduler.running and scheduler.get_job("scan") is not None:
+            scan_requested.set()
+            scheduler.modify_job("scan", next_run_time=datetime.now(timezone.utc))
+
+    def scan_finished(event):
+        # max_instances may coalesce a wakeup while the previous scan is still running.
+        if event.job_id == "scan" and scan_requested.is_set():
+            loop.call_soon_threadsafe(wake)
+
+    async def stop_requested():
+        await anyio.to_thread.run_sync(control.stopping.wait)
+        control.server.should_exit = True
+
+    scheduler.add_job(scan, "interval", seconds=1, id="scan", next_run_time=datetime.now(timezone.utc),
+                      max_instances=1, coalesce=True)
+    scheduler.add_job(explore, "interval", seconds=3600, id="expansion", max_instances=1, coalesce=True)
+    scheduler.add_listener(scan_finished, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
+    scheduler.start()
+    runtime.on_wake = lambda: loop.call_soon_threadsafe(wake)
+    instance = {"instance_id": control.instance_id, "pid": os.getpid(), "protocol": 1,
+                "url": control.url, "token": control.token, "launch_id": os.environ.get("DISTILLAI_START_NONCE")}
+    async def publish_instance():
+        # Uvicorn starts listening after the ASGI lifespan has yielded.
+        while not control.server.started:
+            await anyio.sleep(.01)
+        await anyio.to_thread.run_sync(lambda: atomic_json(runtime.store.home / "instance.json", instance))
+
+    async with anyio.create_task_group() as group:
+        group.start_soon(stop_requested)
+        group.start_soon(publish_instance)
+        try:
+            yield
+        finally:
+            runtime.on_wake = None
+            control.stopping.set()
+            scheduler.pause()
+            scheduler.shutdown(wait=True)
+            with anyio.CancelScope(shield=True):
+                def finish():
+                    with scan_lock:
+                        runtime.close()
+                await anyio.to_thread.run_sync(finish)
+            group.cancel_scope.cancel()
+
+
 def run_service(runtime, *, material_register=None):
     home = runtime.store.home
     with _lease(home) as owned:
@@ -174,30 +313,13 @@ def run_service(runtime, *, material_register=None):
                 runtime.knowledge_index.rebuild()
             except Exception as error:
                 runtime.store.event({"event": "knowledge_index_pending", "code": type(error).__name__})
-        server = BackendServer(runtime)
-        instance = {"instance_id": server.instance_id, "pid": os.getpid(), "protocol": 1,
-                    "url": server.url, "token": server.token,
-                    "launch_id": os.environ.get("DISTILLAI_START_NONCE")}
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        with runtime.store.locked():
-            atomic_json(home / "instance.json", instance)
+        @asynccontextmanager
+        async def lifespan(app):
+            async with service_lifespan(runtime, app.state.control, material_register=material_register):
+                yield
+        server = BackendServer(runtime, lifespan=lifespan)
         try:
-            while not server.stopping.is_set():
-                runtime.finish_post_commits()
-                runtime.discover_materials(register=material_register)
-                from .context import reconcile_feedback
-                reconcile_feedback(runtime)
-                from .lifecycle import tick as lifecycle_tick
-                lifecycle_tick(runtime)
-                from .expansion import tick
-                tick(runtime)
-                runtime.dispatch()
-                interval = runtime.config.read()["values"]["runtime"]["poll_interval_seconds"]
-                runtime._wake.wait(min(interval, threading.TIMEOUT_MAX))
-                runtime._wake.clear()
-        except KeyboardInterrupt:
-            server.stopping.set()
+            server.serve_forever()
         finally:
             while True:
                 try:
@@ -206,14 +328,14 @@ def run_service(runtime, *, material_register=None):
                 except Exception as exc:
                     try:
                         runtime.store.event({"event": "stop_pending", "error": type(exc).__name__})
-                    except OSError:
+                    except (OSError, sqlite3.Error):
                         pass
                     runtime._wake.clear()
                     runtime._wake.wait(1)
-            server.shutdown()
-            thread.join(5)
             server.server_close()
             with runtime.store.locked():
-                current = json.loads((home / "instance.json").read_text(encoding="utf-8"))
-                if current["instance_id"] == server.instance_id:
-                    (home / "instance.json").unlink()
+                path = home / "instance.json"
+                if path.is_file():
+                    current = json.loads(path.read_text(encoding="utf-8"))
+                    if current["instance_id"] == server.instance_id:
+                        path.unlink()

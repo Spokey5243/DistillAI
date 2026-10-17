@@ -31,8 +31,8 @@ class ToolTests(unittest.TestCase):
             (root / "run_agent.py").write_text("", encoding="utf-8")
             store = Store(root / "data")
             config = Config(store)
-            config.update(1, {"llm": {"model": "synthetic"}})
-            executor = HermesExecutor(root, sys.executable, lambda task_id: "http://127.0.0.1/v1",
+            config.update(1, {"llm": {"model": "synthetic", "base_url": "http://127.0.0.1/v1"}})
+            executor = HermesExecutor(root, sys.executable,
                                       runtime_dir=root, base_python=sys._base_executable)
             runtime = Runtime(store, config, executor, lambda task, result: None)
             children = []
@@ -42,7 +42,7 @@ class ToolTests(unittest.TestCase):
                 children.append(child)
                 return child
             try:
-                with patch("distillai.hermes.subprocess.Popen", side_effect=remember), patch("distillai.windows.ProcessJob.assign", side_effect=OSError("synthetic job failure")):
+                with patch("distillai.hermes.subprocess.Popen", side_effect=remember), patch("distillai.windows.ProcessJob.assign", side_effect=[None, OSError("synthetic job failure")]):
                     task = runtime.register("query", {}, "synthetic launch")
                     runtime.dispatch()
                     done = runtime.wait(task["id"], 10)
@@ -56,7 +56,7 @@ class ToolTests(unittest.TestCase):
                         child.wait(5)
                 runtime.close()
 
-    def test_child_report_is_utf8_even_when_framework_changes_stdout_encoding(self):
+    def test_child_report_uses_utf8_pipe_and_keeps_stdout_clear(self):
         from distillai.hermes import task_child
         class Agent:
             tools = []
@@ -69,16 +69,21 @@ class ToolTests(unittest.TestCase):
         loader = SimpleNamespace()
         registry = SimpleNamespace(registry=Registry())
         modules = {"hermes_cli": SimpleNamespace(env_loader=loader), "hermes_cli.env_loader": loader,
-                   "run_agent": SimpleNamespace(AIAgent=Agent), "tools": SimpleNamespace(registry=registry), "tools.registry": registry}
+                   "run_agent": SimpleNamespace(AIAgent=Agent), "tools": SimpleNamespace(registry=registry), "tools.registry": registry,
+                   "agent.ssl_verify": SimpleNamespace(resolve_httpx_verify=lambda **kwargs: True)}
         with tempfile.TemporaryDirectory() as temporary:
             frame = {"id": "a" * 32, "kind": "screening", "inputs": {}, "workspace": temporary,
-                     "home": str(Path(temporary) / "hermes"), "model": "synthetic", "model_base": "http://127.0.0.1/v1",
-                     "token": "synthetic", "max_model_calls": 1, "prompt": "synthetic"}
+                     "home": str(Path(temporary) / "hermes"), "llm": {"model": "synthetic", "base_url": "http://127.0.0.1/v1", "api_key": "", "parameters": {}},
+                     "max_model_calls": 1, "prompt": "synthetic"}
             output = io.BytesIO()
             stdout = io.TextIOWrapper(output, encoding="gbk")
-            with patch.dict(sys.modules, modules), patch("sys.stdin", SimpleNamespace(buffer=io.BytesIO(json.dumps(frame).encode()))), patch("sys.stdout", stdout), patch("distillai.hermes.os.chdir"):
+            messages = []
+            connection = SimpleNamespace(recv_bytes=lambda *args: json.dumps(frame).encode(), send_bytes=messages.append, close=lambda: None)
+            bootstrap = {"address": "synthetic", "authkey": "00"}
+            with patch.dict(sys.modules, modules), patch("sys.stdin", SimpleNamespace(buffer=io.BytesIO(json.dumps(bootstrap).encode()))), patch("multiprocessing.connection.Client", return_value=connection), patch("sys.stdout", stdout), patch("distillai.hermes.os.chdir"):
                 task_child()
-            self.assertEqual(json.loads(output.getvalue().decode("utf-8"))["result"]["reason"], "⚠ 合成结果")
+            self.assertEqual(json.loads(messages[0].decode("utf-8"))["arguments"]["result"]["reason"], "⚠ 合成结果")
+            self.assertEqual(output.getvalue(), b"")
             stdout.detach()
 
     def test_record_lookup_preserves_version_and_alias(self):

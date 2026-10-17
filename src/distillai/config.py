@@ -1,12 +1,14 @@
 """Versioned control configuration; secret-bearing records stay in private config storage."""
 from copy import deepcopy
 import json
-import math
 import sys
 from pathlib import Path
+from typing import Annotated, Literal, TypedDict
 from urllib.parse import urlsplit
 
-from .storage import atomic_json, ConflictError
+from pydantic import ConfigDict, Field, TypeAdapter, ValidationError, with_config
+
+from .storage import ConflictError
 from .windows import canonical_directory
 
 
@@ -21,8 +23,77 @@ DEFAULTS = {
 }
 
 
-def _finite(value):
-    return type(value) in (int, float) and abs(value) <= sys.float_info.max and math.isfinite(value)
+PositiveInt = Annotated[int, Field(gt=0)]
+PositiveNumber = Annotated[int | float, Field(gt=0, le=sys.float_info.max)]
+SafeText = Annotated[str, Field(pattern=r"^[^\x00-\x1f]*$")]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid"))
+class _Thinking(TypedDict):
+    type: Literal["disabled"]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid"))
+class ModelParameters(TypedDict, total=False):
+    max_tokens: PositiveInt
+    temperature: Annotated[int | float, Field(ge=0, le=2)]
+    top_p: Annotated[int | float, Field(gt=0, le=1)]
+    thinking: _Thinking
+
+
+@with_config(ConfigDict(strict=True, extra="forbid"))
+class _LLM(TypedDict):
+    api: Literal["chat_completions"]
+    base_url: SafeText
+    model: SafeText
+    api_key: Annotated[str, Field(pattern=r"^[ -~]*$")]
+    parameters: ModelParameters
+
+
+@with_config(ConfigDict(strict=True, extra="forbid"))
+class _Runtime(TypedDict):
+    max_model_calls: PositiveInt
+    poll_interval_seconds: PositiveNumber
+
+
+@with_config(ConfigDict(strict=True, extra="forbid"))
+class _Episode(TypedDict):
+    switch_buffer_turns: PositiveInt
+
+
+@with_config(ConfigDict(strict=True, extra="forbid"))
+class _Context(TypedDict):
+    refresh_update_count: PositiveInt
+
+
+@with_config(ConfigDict(strict=True, extra="forbid"))
+class _Expansion(TypedDict):
+    interval_seconds: PositiveNumber
+    batch_size: PositiveInt
+
+
+@with_config(ConfigDict(strict=True, extra="forbid"))
+class _Search(TypedDict):
+    api_key: Annotated[str, Field(pattern=r"^[!-~]*$")]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid"))
+class _Workspace(TypedDict):
+    paths: list[str]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid"))
+class ConfigValues(TypedDict):
+    llm: _LLM
+    runtime: _Runtime
+    episode: _Episode
+    context: _Context
+    expansion: _Expansion
+    search: _Search
+    workspace: _Workspace
+
+
+CONFIG_VALUES = TypeAdapter(ConfigValues)
 
 
 class ConfigError(ValueError):
@@ -34,21 +105,34 @@ class ConfigError(ValueError):
 class Config:
     def __init__(self, store, protected_paths=()):
         self.store = store
-        self.protected = (store.home, Path(__file__).resolve().parents[2], *map(Path, protected_paths))
-        self.path = store.home / "config.json"
+        self.protected = (store.home, Path(__file__).resolve().parents[2], *map(Path, protected_paths),
+            *store.home.parent.glob(store.home.name + ".migration-backup-*"),
+            *store.home.parent.glob(store.home.name + ".rollback-retired-*"))
         with store.locked():
-            if not self.path.exists():
+            if store.state.current_config() is None:
                 self._save({"version": 1, "values": deepcopy(DEFAULTS)})
 
     def _save(self, record):
-        atomic_json(self.store.home / "config" / f"{record['version']}.json", record)
-        atomic_json(self.path, record)
+        current = self.store.state.current_config()
+        version = record["version"]
+        while (self.store.home / "config" / f"{version}.json").exists():
+            version += 1
+        record["version"] = version
+        path = self.store.home / "config" / f"{version}.json"
+        with path.open("x", encoding="utf-8", newline="\n") as stream:
+            json.dump(record, stream, ensure_ascii=False, allow_nan=False)
+            stream.write("\n")
+            stream.flush()
+            import os
+            os.fsync(stream.fileno())
+        self.store.state.set_config(version, expected=current)
 
     def private(self, version=None):
         with self.store.locked():
             if version is not None and (type(version) is not int or version < 1):
                 raise ValueError("Invalid configuration version")
-            path = self.path if version is None else self.store.home / "config" / f"{version}.json"
+            version = self.store.state.current_config() if version is None else version
+            path = self.store.home / "config" / f"{version}.json"
             record = json.loads(path.read_text(encoding="utf-8"))
             record["values"].setdefault("search", deepcopy(DEFAULTS["search"]))
             return record
@@ -99,27 +183,14 @@ class Config:
             return self._redact(record)
 
     def _validate(self, values, fields):
-        key = values["search"]["api_key"]
-        if not isinstance(key, str) or not key.isascii() or any(ord(c) < 33 for c in key):
-            fields["search.api_key"] = "Expected an ASCII credential without whitespace"
-        integers = (("runtime", "max_model_calls"), ("episode", "switch_buffer_turns"),
-                    ("context", "refresh_update_count"), ("expansion", "batch_size"))
-        for group, field in integers:
-            value = values[group][field]
-            if type(value) is not int or value <= 0:
-                fields[f"{group}.{field}"] = "Expected a positive integer"
-        for group, field in (("runtime", "poll_interval_seconds"), ("expansion", "interval_seconds")):
-            value = values[group][field]
-            if not _finite(value) or value <= 0:
-                fields[f"{group}.{field}"] = "Expected a positive finite number"
+        try:
+            CONFIG_VALUES.validate_python(values)
+        except ValidationError as error:
+            for item in error.errors(include_url=False, include_input=False):
+                parts = [str(part) for part in item["loc"] if part not in {"int", "float"}]
+                fields[".".join(parts)] = item["msg"]
+            return
         llm = values["llm"]
-        if llm["api"] != "chat_completions":
-            fields["llm.api"] = "This verified runtime supports Chat Completions"
-        for field in ("base_url", "model", "api_key"):
-            if not isinstance(llm[field], str) or any(ord(c) < 32 for c in llm[field]):
-                fields[f"llm.{field}"] = "Expected a string without control characters"
-        if isinstance(llm["api_key"], str) and not llm["api_key"].isascii():
-            fields["llm.api_key"] = "HTTP credentials must be ASCII"
         if isinstance(llm["base_url"], str) and llm["base_url"]:
             try:
                 url = urlsplit(llm["base_url"])
@@ -128,25 +199,9 @@ class Config:
                 url.port
             except ValueError:
                 fields["llm.base_url"] = "Expected an HTTP(S) base URL without credentials, query or fragment"
-        parameters = llm["parameters"]
-        if not isinstance(parameters, dict):
-            fields["llm.parameters"] = "Expected an object"
-        else:
-            for name, value in parameters.items():
-                valid = False
-                if name == "max_tokens":
-                    valid = type(value) is int and value > 0
-                elif name in ("temperature", "top_p"):
-                    valid = _finite(value) and (
-                        0 <= value <= 2 if name == "temperature" else 0 < value <= 1)
-                elif name == "thinking":
-                    valid = isinstance(llm["model"], str) and llm["model"].startswith("deepseek-") and value == {"type": "disabled"}
-                if not valid:
-                    fields[f"llm.parameters.{name}"] = "Unsupported parameter or value for this protocol/model"
+        if "thinking" in llm["parameters"] and not llm["model"].startswith("deepseek-"):
+            fields["llm.parameters.thinking"] = "Unsupported parameter for this model"
         paths = values["workspace"]["paths"]
-        if not isinstance(paths, list):
-            fields["workspace.paths"] = "Expected a list of directory paths"
-            return
         normalized = []
         for index, value in enumerate(paths):
             name = f"workspace.paths.{index}"

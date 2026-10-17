@@ -4,7 +4,6 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
-from urllib.error import HTTPError
 
 from distillai import expansion
 from distillai.config import Config
@@ -45,6 +44,12 @@ class ExpansionTests(unittest.TestCase):
         self.runtime.web_request = lambda endpoint, payload, key: (
             {"success": True, "data": {"web": [{"url": "https://example.org/source", "title": "Synthetic", "description": "search summary"}]}}
             if endpoint == "search" else [{"url": payload["urls"][0], "title": "Synthetic", "content": "Actual synthetic source excerpt"}])
+
+    def web_tool(self, task_id, tool, arguments):
+        prepared = expansion.prepare_web_call(self.runtime, task_id, tool, arguments)
+        private = self.runtime.config.private(self.runtime.task(task_id)["config"]["version"])["values"]["search"]["api_key"]
+        response = self.runtime.web_request(prepared["endpoint"], prepared["payload"], private or self.runtime.search_environment_key)
+        return expansion.web_tool(self.runtime, task_id, tool, arguments, response)
 
     def execute(self, task, runtime):
         inputs = expansion.execution_task(runtime, task)["inputs"]
@@ -114,9 +119,9 @@ class ExpansionTests(unittest.TestCase):
         def action(task, inputs):
             def request(endpoint, payload, key):
                 self.assertEqual(key, "synthetic-frozen-key")
-                raise HTTPError("https://api.tavily.com/search", 429, "synthetic-frozen-key", {}, None)
+                return {"error": {"code": "quota_or_rate_limit", "http_status": 429}}
             self.runtime.web_request = request
-            result = expansion.web_tool(self.runtime, task["id"], "web_search", {"query": "synthetic public claim"})
+            result = self.web_tool( task["id"], "web_search", {"query": "synthetic public claim"})
             self.assertEqual(result["error"]["code"], "quota_or_rate_limit")
             self.assertNotIn("results", result)
             self.assertNotIn("synthetic-frozen-key", str(result))
@@ -184,9 +189,9 @@ class ExpansionTests(unittest.TestCase):
 
     def test_fetch_preserves_actual_source_but_search_snippet_cannot_support_claim(self):
         def action(task, inputs):
-            search = expansion.web_tool(self.runtime, task["id"], "web_search", {"query": "synthetic claim"})
+            search = self.web_tool( task["id"], "web_search", {"query": "synthetic claim"})
             self.assertNotIn("source_ref", str(search))
-            fetched = expansion.web_tool(self.runtime, task["id"], "fetch_page", {"url": "https://example.org/source"})
+            fetched = self.web_tool( task["id"], "fetch_page", {"url": "https://example.org/source"})
             source = fetched["source_ref"]
             self.assertEqual(read_source(self.store.home, source)["text"], "Actual synthetic source excerpt")
             record = {**inputs["expansion_template"], "question": "Does e connect a and b?", "reason": "potential transfer",
@@ -223,17 +228,17 @@ class ExpansionTests(unittest.TestCase):
     def test_web_tool_forbids_other_tasks_bad_urls_and_late_publication_after_cancel(self):
         other = self.runtime.register("query", {}, "synthetic")
         with self.assertRaises((ValueError, CancelledError)):
-            expansion.web_tool(self.runtime, other["id"], "web_search", {"query": "x"})
+            self.web_tool( other["id"], "web_search", {"query": "x"})
         def action(task, inputs):
             for url in ("file:///secret", "http://localhost/admin", "http://127.0.0.1/", "https://user:pass@example.org"):
                 with self.subTest(url=url), self.assertRaises(ValueError):
-                    expansion.web_tool(self.runtime, task["id"], "fetch_page", {"url": url})
+                    self.web_tool( task["id"], "fetch_page", {"url": url})
             def interrupted(endpoint, payload, key):
                 self.runtime.cancel(task["id"], "synthetic cancelled network")
                 return [{"url": payload["urls"][0], "title": "x", "content": "must not persist"}]
             self.runtime.web_request = interrupted
             with self.assertRaises(CancelledError):
-                expansion.web_tool(self.runtime, task["id"], "fetch_page", {"url": "https://example.org/source"})
+                self.web_tool( task["id"], "fetch_page", {"url": "https://example.org/source"})
             self.assertFalse(list((self.store.home / "external-sources").glob("*.json")))
             return {"expansion_refs": [], "reason": "cancelled"}
         self.runtime.cancel(other["id"], "test setup")

@@ -4,6 +4,9 @@ import json
 from pathlib import Path
 import re
 import uuid
+from typing import Annotated, Literal, NotRequired, TypedDict
+
+from pydantic import ConfigDict, Field, TypeAdapter, ValidationError, with_config
 from urllib.parse import urlsplit
 
 from .storage import _relative, _identifier, atomic_json, Store, ConflictError
@@ -12,6 +15,46 @@ from .windows import FileHandle, pinned_path
 
 class SourceError(ValueError):
     pass
+
+
+Identifier = Annotated[str, Field(pattern=r"^[0-9a-f]{32}$")]
+Version = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid"))
+class RecordRef(TypedDict):
+    id: Identifier
+    version: Version
+
+
+@with_config(ConfigDict(strict=True, extra="forbid"))
+class QueueRef(TypedDict):
+    connector: Literal["codex"]
+    session_key: Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]+$")]
+    line_start: Annotated[int, Field(ge=1)]
+    line_end: Annotated[int, Field(ge=1)]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid"))
+class VersionedRef(TypedDict):
+    source_kind: Literal["external", "user_submission"]
+    id: Identifier
+    version: Version
+
+
+SourceRef = QueueRef | VersionedRef
+QUEUE_REF = TypeAdapter(QueueRef)
+VERSIONED_REF = TypeAdapter(VersionedRef)
+
+
+@with_config(ConfigDict(strict=True, extra="forbid"))
+class QueueEntry(TypedDict):
+    role: Literal["user", "assistant", "tool"]
+    text: Annotated[str, Field(min_length=1)]
+    at: NotRequired[str]
+
+
+QUEUE_ENTRY = TypeAdapter(QueueEntry)
 
 
 def utc(value):
@@ -44,9 +87,11 @@ def queue_path(home, key):
 
 def entry(data):
     value = json.loads(data)
-    if (not isinstance(value, dict) or set(value) - {"role", "text", "at"}
-            or value.get("role") not in ("user", "assistant", "tool")
-            or not isinstance(value.get("text"), str) or not value["text"].strip()
+    try:
+        QUEUE_ENTRY.validate_python(value)
+    except ValidationError:
+        raise SourceError("Invalid queue entry") from None
+    if (not value["text"].strip()
             or "at" in value and (utc(value["at"]) is None or utc(value["at"]) != value["at"])):
         raise SourceError("Invalid queue entry")
     return value
@@ -71,9 +116,11 @@ def scan_queue(home, key):
 def read_source(home, ref):
     if isinstance(ref, dict) and "source_kind" in ref:
         return _read_versioned(home, ref)
-    if (not isinstance(ref, dict) or set(ref) != {"connector", "session_key", "line_start", "line_end"}
-            or ref["connector"] != "codex" or type(ref["line_start"]) is not int
-            or type(ref["line_end"]) is not int or not 1 <= ref["line_start"] <= ref["line_end"]):
+    try:
+        QUEUE_REF.validate_python(ref)
+    except ValidationError:
+        raise SourceError("Invalid source reference") from None
+    if ref["line_start"] > ref["line_end"]:
         raise SourceError("Invalid source reference")
     rows, _ = scan_queue(home, ref["session_key"])
     if ref["line_end"] > len(rows):
@@ -91,9 +138,11 @@ def contains(ref, allowed):
         except ValueError:
             return False
         return ref in allowed
-    if (not isinstance(ref, dict) or set(ref) != {"connector", "session_key", "line_start", "line_end"}
-            or ref["connector"] != "codex" or type(ref["line_start"]) is not int
-            or type(ref["line_end"]) is not int or not 1 <= ref["line_start"] <= ref["line_end"]):
+    try:
+        QUEUE_REF.validate_python(ref)
+    except ValidationError:
+        return False
+    if ref["line_start"] > ref["line_end"]:
         return False
     covered = ref["line_start"]
     intervals = sorted((item["line_start"], item["line_end"]) for item in allowed
@@ -108,13 +157,9 @@ def contains(ref, allowed):
 
 
 def _versioned_ref(ref):
-    if (not isinstance(ref, dict) or set(ref) != {"source_kind", "id", "version"}
-            or ref["source_kind"] not in {"external", "user_submission"}):
-        raise SourceError("Invalid versioned source reference")
     try:
-        _identifier(ref["id"])
-        _identifier(ref["version"], 64)
-    except ValueError:
+        VERSIONED_REF.validate_python(ref)
+    except ValidationError:
         raise SourceError("Invalid source identity or version") from None
 
 

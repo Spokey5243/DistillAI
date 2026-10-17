@@ -7,150 +7,273 @@ status: approved
 decision_mode: user-approved
 ---
 
-# DistillAI 初版 Implementation Plan
+# DistillAI 初版 Implementation Plan：复用现成能力，移除模型转发
 
-> 执行者按模块 Plan 逐项推进，使用 `executing-plans`；默认由主 Agent 实施。遵循仓库 SDLC 的 Design / Plan 批准点，checkbox 只在取得实际结果后勾选。
+> 2026-10-17 用户批准重写稿并授权实施；按 `executing-plans` 由主 Agent 持续执行。
+> 旧测试结果不代表新实现已通过；仅在取得当前验证证据后勾选步骤。
 
-## 来源与目标
+## 来源、范围与当前基线
 
-2026-10-13，用户要求开始编写 Plan。本计划以[统一 Design](design.md)及四轮 grill 确认的九项决定为依据，沿用[Discussion](discussion.md)中按模块分别编写、批准和实施的安排。本文件管理跨模块依赖、技术验证和最终验收；实际任务在八份模块 Plan 中。
+来源是[统一 Design](design.md)与本次用户要求：重写 Plan，优先复用依赖，去掉无必要的 HTTP 转发层。本稿替换旧 R01 和原 140 步的执行安排，继续归属 Issue #4 / 当前分支，不另起一套需求。
 
-目标：在 Windows 上完成一个面向同一用户、接入 Codex Desktop 的本地常驻产品，贯通采集、episode、知识与关系、用户理解假设、主动外扩、上下文 / MCP、自然反馈和 Web 配置 / 查看 / 在线编辑。
+目标：保留采集、episode、知识关系、用户模型、主动外扩、上下文 / MCP 和 Web 的完整产品范围，把框架已提供的能力交回框架，并补齐尚未完成的 Desktop 与语义验收。
 
-架构：Python 控制层持有调度、权限、预算、版本和提交；独立任务子进程通过 Hermes `AIAgent.run_conversation()` 执行模型 / 工具循环。JSON / JSONL 是权威记录，图是可重建的名称 / 连接索引；Hook、MCP stdio 和同源静态 Web 复用一个本机后台。
+2026-10-16 只读核对：已有 `src/distillai/`、产品插件、启动脚本和 20 份产品测试文件；`server.py` 仍是 `BaseHTTPRequestHandler` / `ThreadingHTTPServer`，`hermes.py` 把模型与程序工具请求送回 loopback。当前 `pyproject.toml` 已声明 FastAPI / Uvicorn / HTTPX / MCP，但声明依赖不代表源码已迁移。工作区原有 `pyproject.toml`、`uv.lock`、`tests/test_product_http.py`、`tests/test_product_web.py` 修改，本轮保留其字节内容。
 
-技术基线：通用能力先采用成熟依赖；本机 HTTP 使用 FastAPI / Uvicorn，模型 HTTP 转发使用 HTTPX。产品控制进程使用 uv 锁定的项目环境，Hermes 源码与 PM 环境用于 AIAgent 任务；Python 官方 MCP SDK、Win32 句柄 / 停树适配、原生 HTML / CSS / JS 沿用。依据用户确认的 Design 修订 1，OS 写隔离及其 runner 移至后续独立 Issue；当前使用普通独立任务子进程。固定依赖组合和搜索后端按下文门禁收敛，不把已有调研视为运行成功。
+当前源码基准为 `011cf0444c4d81a7738ed2cfe68153be0f74f263`；Hermes 本地 HEAD 核对为 `a7b2ba02e3b9bb95d0cac87a6312cc82a3bc3eed`。旧测试 / 实机结论只作历史参考，实施时重新取得针对新代码的证据。
 
-### R01：2026-10-16 用户授权的基础设施重构
+## 执行结构与复用决策
 
-用户要求删除 AGENTS.md 中的框架 / 依赖限制、移除重复实现的通用能力、同步 Plan 并保留可追溯历史，完成后继续原实施。此要求批准以下技术替换，不改变业务契约或远端授权。原 140 步仍保留，重构检查单单独统计。
+```text
+Codex Hook / FastMCP stdio / 浏览器
+                  ↓ 本机业务 API
+          FastAPI + Uvicorn（一个进程 / 一个 worker）
+                  ↓ 现有 Runtime / Store
+          普通独立任务子进程：Hermes AIAgent
+                  ↓ Hermes 已有模型 SDK
+                用户配置的模型 endpoint
 
-- [ ] R01-1：删除手写 HTTP 服务 / 路由 / 响应处理，改为 FastAPI 路由、依赖与异常处理以及 Uvicorn 生命周期；复用现有 API 契约测试。
-- [ ] R01-2：模型转发改用 HTTPX，保留固定目标、任务 token、调用计数、可确认未发出请求的退额、SSE 流式转发与取消 / 错误语义。
-- [ ] R01-3：项目 uv 环境安装锁定依赖；启动、MCP、测试和 CI 使用产品环境，AIAgent 保持 PM 管理环境，不向 PM 安装产品框架。
-- [ ] R01-4：检查其他通用实现，移除重复框架能力；更新实际受影响文档 / 模块 Plan，并以现有稳定业务、安全和数据完整性契约验证。
-- [ ] R01-5：实际后台 / Web / AIAgent 探针及全量检查通过后按主题本地提交，接续剩余原 Plan；不自动 Push / PR / Merge。
+任务子进程 ←→ 父进程：标准库 multiprocessing.connection（Windows AF_PIPE）
+用途仅为预算确认、程序业务工具、结果；不转发模型 HTTP 响应。
+```
 
-2026-10-13，用户明确要求“现在开始按照plan执行”，批准当前统一 Design / Prompt、总 Plan 与八份模块 Plan 并授权本地实施。运行条件与未决技术继续按 G1–G3 门禁收敛，远端写入仍需对应授权。
-
-## 当前资产与文件映射
-
-Plan 编写时，分支为 `codex/4-initial-development`，当时可运行资产只有 `plugins/distill-capture/`、`scripts/demo_capture.py`、`tests/test_capture.py` 和开发 Push Hook；当时尚无产品包、pyproject、第三方生产依赖或产品测试；当前实施进度见文末执行记录。旧采集插件保存原始 payload 到 `.distallAI`，不是新队列契约，保持原位，不就地改成产品实现。
-
-| 位置 | 实施时的职责 / 修改归属 |
-| --- | --- |
-| `src/distillai/__init__.py`、`__main__.py` | 产品包与命令入口；M01 |
-| `runtime.py`、`config.py`、`server.py` | 任务 / 生命周期 / 预算、配置生效、本机 HTTP；M01 |
-| `storage.py`、`windows.py` | 快照 / 版本 / 提交 / 恢复、窄范围句柄和进程树适配；M01 |
-| `hermes.py`、`tools.py` | 直接库调用和任务工具授权；M01 建立，业务模块登记自身工具 |
-| `capture.py`、`sources.py` | 新产品采集过滤 / cursor / 队列及来源解析；M02 |
-| `episode.py`、`knowledge.py`、`cognition.py`、`expansion.py`、`context.py` | M03–M07 业务职责 |
-| `mcp.py` | 官方协议 SDK 与后台桥接；M07 |
-| `prompts/` | Design P01–P07 / P09-B；对应模块发布，实际全文版本入历史 |
-| `web/` | 四入口静态页面、样式与交互；M08 |
-| `plugins/distillai/hooks/`、`skills/distillai/` | Codex 产品 Hook 与 P08 / P09 接入说明；M02 / M03 / M07 协同 |
-| `scripts/start.ps1` | 检查源码 / 环境、启动、退出、MCP 桥接和打开 Web；M01 |
-| `pyproject.toml`、产品依赖锁文件 | 只声明实际使用的依赖，工具生成锁；M01 验证环境后创建 |
-| `tests/test_*.py`、`tests/fixtures/` | 标准库 unittest 与审核后的合成 fixture；按模块分组 |
-| `.github/workflows/ci.yml` | 保留现有 Windows job，增加离线产品契约检查；M01 / 最终验收 |
-| `.gitignore`、`README.md`、`.agents/rules/python.md`、`github-actions.md` | 实施后同步真实目录、环境、命令与数据排除；M01 / 最终验收 |
-
-上述产品 Python 源文件均位于 `src/distillai/`；文件名是实施映射，实际已实现范围以 checkbox 与执行记录为准。仅在文件承担独立职责时创建，不建立八个包 / 服务。Hermes 源码保持在并列上游仓库，不复制或 vendor；产品不安装 Hermes CLI 来执行任务。
-
-## 模块任务与依赖
-
-| 模块 Plan | 完成结果 | 前置依赖 |
+| 能力 | 直接复用 | DistillAI 保留 / 删除什么 |
 | --- | --- | --- |
-| [M01 运行与保存](modules/01-runtime/plan.md) | 可恢复的本机后台、受控 AIAgent 执行、冲突安全提交 | G0；能力验证 G1 |
-| [M02 采集与来源](modules/02-capture/plan.md) | 新产品队列、来源读取、通知 / 扫描补登记 | M01 本机接口和保存基础；Desktop 采集证据 |
-| [M03 episode](modules/03-episode/plan.md) | 固定范围归属 / 缓冲、计时收尾、修订交接 | M01 + M02；生命周期验证 G2 |
-| [M04 知识与图](modules/04-knowledge/plan.md) | 独立详情、名称图、查询和确定性重建 | M01 + M02 + M03 关闭记录 |
-| [M05 用户模型](modules/05-cognition/plan.md) | 有来源观察、竞争假设、帮助条件与定性判断 | M04，包括正常空结果；原 episode 来源 |
-| [M06 主动外扩](modules/06-expansion/plan.md) | 周期覆盖、逐主张核查、结果交 M04 | M04 + M05；搜索选择和接入 G3 |
-| [M07 上下文与 MCP](modules/07-context/plan.md) | 两列表、只读检索、筛选 / compact、反馈关联 | M03 + M04 + M05；M06 结果可随后接入 |
-| [M08 Web](modules/08-web/plan.md) | 配置、episode、知识 / 关系、历史查看和编辑 | M01 API；各写操作依赖归属模块；M07 历史 |
+| 模型 / 工具循环、流式解析、失败重试 | Hermes `AIAgent.run_conversation()` 及其模型 SDK | 删除本机 `/internal/tasks/{id}/v1` 模型代理、`models` 镜像、SSE 转抄；不自写 provider / tool loop |
+| 调用额度 | SDK 发送前接入现有 `Runtime.reserve_generation` | 只保留持久次数和拒发判断；不把 `max_iterations` 当请求数，不再用代理实现计数 |
+| HTTP 服务、路由、响应、静态文件 | FastAPI / Starlette + Uvicorn | 删除手写 Handler、HTTP 编解码和路由分发；保留本机业务授权、CSRF 与版本冲突语义 |
+| 请求 / 配置 / 工具 / 记录结构 | Pydantic 严格模型与 TypeAdapter；现有外部 JSON Schema 用已锁定 jsonschema | 共用字段定义、校验和工具 schema 生成；来源、字段归属和版本关系仍由领域校验处理，不重复维护结构校验 |
+| 本机 API 客户端 | HTTPX | 统一启动 / MCP 的超时、错误和连接管理；采集通知的 200ms 不等响应契约保留现有最小发送实现 |
+| MCP 高层工具、协议、schema、测试连接 | 独立 FastMCP 包及其兼容 MCP SDK | FastMCP 注册两个工具、生成 schema / 结果，以 Client 测试；保留实际业务映射，不手写协议 / 测试连接 |
+| 搜索与正文提取 | 固定 Hermes 的 Tavily 请求和结果归一化实现 | 删除 `expansion.tavily_request` 重复 HTTP 请求构造；保留实际来源落盘、逐主张引用和覆盖进度 |
+| 有向多关系图 | NetworkX `MultiDiGraph`（拟新增直接依赖） | 删除手写入 / 出邻接维护；保留名称 / 别名精确映射、关系 ID / 版本及查询排序 |
+| 文件 / Shell 工具 | Hermes 现有工具与 registry | 只登记来源读取、程序评分、业务 ID 等产品工具，不复制基础工具实现 |
+| 运行控制状态 / 数据库事务 | SQLite，标准库 `sqlite3` | 任务、调用额度、任务幂等键、提交清单和配置版本指针入库；唯一约束与事务替换扫描任务 JSON 和多次保存控制状态，内容文件发布仍有独立恢复协议 |
+| 内容文件 / 原子替换 / 进程 | `json`、`hashlib`、`subprocess`；boltons / pywin32 | 原始材料、领域内容和不可变快照继续为文件；保留多文件发布、冲突恢复与停树规则，只保留系统库未覆盖的原生窄适配 |
+| Web 页面 | 现有 HTML / CSS / JS 和 DOM / 表单能力 | 复用已建页面，不重做界面，不新增前端构建链或业务服务 |
+| 浏览器行为回归 | Playwright Python，`browser` 开发依赖组 | 在真实 Chromium 中验证现有 JS、冲突留输入与迟到响应；不重复 API 单测，不依赖个人会话或模型 |
+| Python 静态检查 | Ruff，`dev` 开发依赖组 | 检查未定义名称、未使用导入等明确错误；不把全仓格式化混入框架迁移 |
 
-推荐执行顺序：G0 → M01 → M02 → M03 → M04 → M05 → M07 → M08 → M06 搜索接入 → 全链验收。M06 可在 G3 已闭合时提前；M07 不等待首次外扩，M08 只读页面可先做。没有搜索后端时保留 M06 未完成，不能把其他模块完成称为初版全部交付。
+复用的判断以具体职责为准。JSONL 来源身份、episode 边界规则、同源观察、版本提交、候选失效和覆盖进度属于产品本身；它们不因换框架被重新发明或删除。
 
-### grill 决定覆盖
+### 用户确认的复用约束
 
-| 已确认决定 | 实施与验证位置 |
-| --- | --- |
-| Q1：Python 控制层 / Hook / MCP，任务子进程直接 AIAgent | M01 Task 1 / 3 / 4；M02 / M07 接入 |
-| Q2：episode 修订期间直接依赖判断等待重分析 | M03 Task 3、M05 Task 2、M07 Task 1；M08 版本展示 |
-| Q3：知识 / 认知依赖变化触发准备 | M04 Task 3、M05 Task 2、M07 Task 1 |
-| Q4：同任务程序评分工具往返 | M03 Task 2；工具后推理沿 M01 计数 |
-| Q5：刷新 3 次、外扩 3600 秒 / 10 条可配置 | M01 Task 3、M06 Task 2、M07 Task 1 |
-| Q6：旧版 M04 / M05 运行前 / 提交前防发布 | M01 Task 2 / 3、M03 Task 3、M05 Task 2 |
-| Q7：末次允许生成可完成，新增超额请求拒绝 | M01 Task 1 / 3、M06 Task 3 |
-| Q8：MCP 明确引用程序查询，自然语言只读 Agent | M04 Task 2、M07 Task 3 |
-| Q9：筛选 / 查询 / 普通优先级，查询等待与定向取消 | M01 Task 3、M07 Task 3 / 4 |
+2026-10-16 用户明确指定日志用 Loguru，并要求继续复用 FastAPI 的测试能力、评估 FastMCP，以及“只要有的就不要写”。每项通用能力先查所用框架、现有依赖和成熟库；有满足契约的现成实现就直接调用，不再以“标准库优先”“少加依赖”或“自己写几行更轻”为由重复实现。新增代码限于产品规则、参数 / 来源 / 权限映射，以及经核对确无现成覆盖的窄适配；保留自写部分须记录具体缺口与依据。已有库提供的重试、schema、测试客户端、日志、锁、定时器、配置加载、路径词法校验、协议和消息分帧不再另造框架。
 
-## 技术验证门禁
+具体安排：日志采用 Loguru；HTTP / Web 用 `fastapi.testclient.TestClient` 与 `app.dependency_overrides` 测试；MCP 高层采用独立包 `from fastmcp import FastMCP, Client`，stdio 对接 Codex，内存 Client 做工具测试。工具签名 / schema / 结果封装与测试连接交给 FastMCP，业务层只实现两个工具的实际行为。FastAPI TestClient 来自 Starlette 并基于 HTTPX，它与 MockTransport 分别负责应用入站测试和外部 HTTP 模拟。
 
-| 门禁 | 验证动作与证据 | 放行标准 / 失败处理 |
+本轮官方文档与 PyPI 元数据核对：Loguru 0.7.3、FastMCP 4.1.0 为候选安装版本；FastMCP 4.1.0 的 client / server 依赖声明兼容 `mcp>=2,<3`，同时约束 Pydantic / Starlette 等依赖。该声明不是已完成兼容验证；实施时由 uv 解析整个产品环境并锁定，不照搬旧环境检查，不把独立 FastMCP 与旧 SDK 中的同名类混用。产品实现仍未启动。
+
+依据：[Loguru API](https://loguru.readthedocs.io/en/latest/api/logger.html)、[FastAPI TestClient](https://fastapi.tiangolo.com/tutorial/testing/)、[依赖覆盖](https://fastapi.tiangolo.com/advanced/testing-dependencies/)、[lifespan 测试](https://fastapi.tiangolo.com/advanced/testing-events/)、[FastMCP 工具](https://gofastmcp.com/servers/tools)、[FastMCP 测试](https://gofastmcp.com/development/tests)、[FastMCP stdio](https://gofastmcp.com/deployment/running-server)、[FastMCP 包元数据](https://pypi.org/pypi/fastmcp/json)。
+
+### 补充审计：上一稿漏掉的通用能力
+
+2026-10-16 再次核对现有代码及 `uv.lock`：MCP 已传递引入 Pydantic、AnyIO、jsonschema 和 Windows pywin32 311。锁中存在只证明依赖已解析，不证明各解释器已安装；实际直接使用时声明直接依赖并检查对应环境。本表补入具体替换范围，不以“属于产品基础设施”为理由整块保留手写实现。
+
+| 能力 / 当前重复实现 | 复用对象与本稿处理 | 保留的契约 / 验证 |
 | --- | --- | --- |
-| G0：文档基线 | 2026-10-13 用户以“现在开始按照plan执行”批准当前统一 Design / P01–P09、总 Plan 与 M01–M08 Plan | 已通过；技术验证与待选服务仍按 G1–G3 推进 |
-| G1：执行与提交能力 | M01 Task 1 实测 Hermes 环境 / 所有生成计数 / 普通任务进程树停止 / 文件句柄；固定上游 SHA、环境、SDK 与启动组合 | 模型调用可计数、任务可可靠停止、程序写回不覆盖同期编辑；OS 写隔离按用户决定延后，不作为本次门禁，不将 cwd / Prompt 作为隔离证明 |
-| G2：Desktop 生命周期 | M03 Task 1 与 M07 Task 4 取得真实 UserPromptSubmit、Stop、中断、SessionEnd、compact 时序 | 可靠终止依据支撑 30 分钟计时，compact 能恢复本轮快照；缺信号时明确保留未完成状态，不猜结束时间 |
-| G3：外部检索 | 用户此前要求延后选择，M06 Task 1 到接入前收敛一种搜索 / 读取方法与实际凭证、错误、模型请求计数 | 不提前选供应商、不建设多供应商框架；未选择时不启动自动外扩，不消耗周期或覆盖进度 |
-| G4：完整初版 | 八模块契约测试 + Windows 实测 + Desktop / Web / 自然反馈验收 | 四项验收都有可回查证据，不能用离线或模拟测试替代实机结果 |
+| `config._validate`、各模块记录 / 引用字段检查、`tools.py` 的手写工具 schema | Pydantic `BaseModel` / `TypeAdapter`，严格模式、未知字段拒绝；同一模型生成工具 schema。上游已经给出的 JSON Schema 需要程序验证时用 jsonschema，不翻译成第二份 schema | 不强制把字符串 / bool 转数字；optional / null / 默认值沿契约；字段错误路径不丢。来源存在、权限、前后版本 / 观察身份等跨记录判断继续保留 |
+| `windows.py` 的 kernel32 函数签名、Job / 文件信息 ctypes 结构 | pywin32 `win32job` / `win32file` / `win32api` / `win32process` 已覆盖部分直接调用；删除对应声明 / 手动 CloseHandle 管理，复用 PyHANDLE 生命周期 | 保留目录句柄绑定、拒绝 junction / ADS / hard link、挂起后入 Job、确认 active=0 等策略。NtCreateFile / 根句柄相对 rename 等未覆盖接口单列保留，不声称 pywin32 全覆盖 |
+| `Store.locked` 与 `startup._lease` 的文件锁包装 | 拟用 portalocker 复用跨进程锁、重入 / acquire / release / 异常处理；保留进程内 threading.RLock，启动锁用非阻塞获取，Store 沿原嵌套语义 | Windows 两进程竞争、同线程嵌套、跨线程排他、进程崩溃释放。采集 / 发布的目标句柄保护不改用 sidecar lock，文件身份保护仍沿 Win32 |
+| 上一稿准备新增的 stdout JSON 行双向协议 | 改用标准库 `multiprocessing.connection` 的 Windows AF_PIPE / Connection 消息分帧、认证与 EOF；`send_bytes` / `recv_bytes(maxlength)` 传 JSON，不用自动 pickle 的 send / recv | 保留 Popen / PM 解释器 / suspended→Job→resume；stdin 只传一次私有引导连接信息。父进程绑定单任务连接、鉴权、尺寸、操作名和顺序；无 TCP / HTTP 服务，不自己做字节缓冲 / 消息帧解析 |
+| `mcp.Bridge` 同步请求 + asyncio.to_thread + shield 拼接 | HTTPX `AsyncClient` 原生异步请求；SDK 已用的 AnyIO TaskGroup / CancelScope 管理客户端与取消清理 | HTTP await 被取消后，shield 内向同一 invocation 发 cancel；业务任务取消仍由 Runtime / Job 确认。去掉每次请求额外线程，不重写持久调度 / 调用所有权 |
+| `server._page` 的 Base64 + HMAC 游标编解码 | 拟用 ItsDangerous `URLSafeSerializer`，salt 区分游标用途；继续校验 collection / filters / after | 游标不允许跨筛选 / 集合使用或篡改；保持分页结果 schema，客户端游标是 opaque。重构启停清旧会话 / 游标；不偷偷给持久业务记录换格式 |
+| 手写 Cookie header / 解析和基础 Host 检查 | Starlette Request.cookies、Response.set_cookie / delete_cookie、TrustedHostMiddleware；复用 FastAPI 授权依赖 | 一次性引导、服务端 opaque session、Origin / CSRF 仍保留；不以 CORS 代替 CSRF，不切成 JWT 或签名客户端 session，不引入第二套用户认证 |
+| `capture.diagnostic` 的日志文件打开 / JSON 写入；各处 stderr 诊断 | Loguru `logger.bind` / `logger.add` 的结构化输出、rotation / retention / compression；不再手写 Formatter、轮转、清理器或通用日志包装框架 | 配置 diagnose=False / backtrace=False，白名单字段，不记任意异常正文 / payload / key。独立 Hook / Popen 任务进程使用各自 sink，enqueue=True 不等于能把不同解释器的独立 logger 自动合并；持久 Store.event 仍保留原落盘语义 |
+| HTTP 单测里的手写 Provider HTTPServer | `fastapi.testclient.TestClient` 用 with 启动 / 结束 lifespan，`app.dependency_overrides` 注入测试依赖并在结束清空；HTTPX MockTransport 只模拟出站上游 | API 认证 / 版本 / 错误 / Cookie 测试直接请求真实 app，不走自写 HTTP 测试客户端；实际 socket / 流式断开 / 跨进程模型计数和 Job 探针仍单独验证 |
+| 启动配置的环境变量 / 已保存路径取值拼接 | pydantic-settings BaseSettings 与内置 JSON 配置源，显式配置 CLI → 获准环境 → launch.json → 默认值优先级，关闭 dotenv / 隐式 secret 目录源 | 版本化业务 Config 继续固定任务版本；不把 Web 保存变成热读进程环境，不读取个人 Hermes .env，敏感字段不经调试源日志输出 |
+| scan / expansion 的周期唤醒、episode 终止计时的调度机械部分 | APScheduler 3.x AsyncIOScheduler、IntervalTrigger / DateTrigger、reschedule / remove_job；由单后台 lifespan 启停，内存 job store 由既有持久记录重建 | 回调只唤醒 / 登记既有领域任务，来源 / 依赖 / 固定输入 / 额度仍由 Runtime 校验；episode 一次性任务设 misfire_grace_time=None，休眠迟到后仍按原截止 / 代次检查；周期任务合并唤醒，不补造业务任务。不把 Job 当业务已完成，不引入独立调度 DB / Redis |
+| `storage._relative` 的 Windows 保留名 / 非法字符正则 | pathvalidate 的 Windows filename 校验，覆盖各路径段并显式拒绝 `.` / `..`；只 validate，不 sanitize 后猜用户目标 | 相对路径 / 目录授权、ADS、junction / hard link 和句柄身份仍由现有权限与 Win32 检查；库的长度 / 规范化默认值必须按现有合法路径用例核对，不能引入新截断或悄悄改路径 |
+| `storage.atomic_json` 的临时文件、fsync、替换和异常清理 | boltons.fileutils.atomic_save；严格 JSON 编码仍用标准库，临时文件名由现有任务身份派生为唯一值 | 在 Windows 核对同目录保存、覆盖 / 占用 / 写失败旧文件不损坏；只替单文件通用保存，不替多文件冲突发布 / 恢复 |
 
-本地 Hermes 当前 HEAD 在 2026-10-13 只读核对为 `a7b2ba02e3b9bb95d0cac87a6312cc82a3bc3eed`，与 Design 2026-10-12 官方查证提交 `97a9ae8ee55d31bebce49f1fb6b5ef775323976a` 不同。M01 先记录差异并选择经验证的固定提交；不自动更新、切换或把当前 HEAD 当发行基线。[本地源码路由](../../../research/runtime/README.md#本地源码路由)继续有效。
+执行映射：字段 / IPC / pywin32 / 锁 / Loguru / settings / 定时触发 / 路径在 M01-R1 / R5，FastMCP 与 MCP 异步在 M07-R1，TestClient / 游标 / Cookie 在 M08-R1，结构模型按 M02–M07 各自归属接入。只为实际导入声明直接依赖；本轮仍不安装或修改代码。
 
-2026-10-15，G1 通过修订 1 的验证：固定上述已实测 Hermes SHA、官方 PM 应用 receipt、MCP 2.0.0 和产品 uv.lock；普通进程树、真实工具往返 / 预算以及提交窗口证据见 M01。产品存储和句柄适配已实施，24 项永久契约在 Python 3.13.5 / PM Python 3.14.7 均通过；后置业务登记和模块字段校验接入仍需后续任务，未将完整 M01 / 产品标成已完成。
+### 已评估但不直接引入的方案
 
-## 共用实施与验证约定
+SQLite 已由用户同意加入本稿，不再列为暂不采用的候选；控制状态与内容文件的具体划分见下节。SQLAlchemy / Alembic、Redis / Celery 本轮不引入；以标准库 sqlite3 的事务和约束完成当前单机控制状态保存，不建立通用 ORM / 队列框架。
 
-每个模块先写保护公开契约的合成用例，运行对应组确认暴露缺失行为，再实现并复跑；不为布局或一次性数据写永久测试。使用标准库 unittest，不因计划模板引入 pytest / Ruff。现有采集测试仍直接运行，产品测试命名与旧 `test_capture.py` 区分。
+APScheduler 直接复用定时触发，不冒充持久业务队列。Celery / Redis 没有在当前本机单用户方案中被采用；这不授权另写它们提供的通用队列框架。Hermes 已有重试，不再叠 Tenacity 重试模型；单文件保存改复用 boltons.atomic_save，不因当前实现只有几行就保留重复通用代码。`argparse`、`datetime`、`pathlib`、`hashlib`、浏览器原生表单 / fetch 继续直接使用。
 
-产品测试在仓库根目录、兼容的控制层解释器下执行；源目录通过进程环境加入：
+新增依据：[pydantic-settings](https://pydantic.dev/docs/validation/latest/concepts/pydantic_settings/)、[APScheduler 3.x](https://apscheduler.readthedocs.io/en/3.x/userguide.html)、[pathvalidate](https://pathvalidate.readthedocs.io/en/latest/pages/reference/function.html)、[boltons AtomicSaver](https://boltons.readthedocs.io/en/latest/fileutils.html#boltons.fileutils.AtomicSaver)。APScheduler 3.11.3 / pathvalidate 3.3.1 为当前包元数据查证版本，不混用 APScheduler 4.x 文档 API；实际版本由实施时兼容解析锁定。
+
+核对依据：[Pydantic strict mode](https://docs.pydantic.dev/latest/concepts/strict_mode/)、[jsonschema](https://python-jsonschema.readthedocs.io/en/stable/validate/)、[pywin32 Job](https://mhammond.github.io/pywin32/win32job.html)、[pywin32 files](https://mhammond.github.io/pywin32/win32file.html)、[Portalocker](https://portalocker.readthedocs.io/en/latest/api/portalocker.html)、[Python Connection](https://docs.python.org/3.13/library/multiprocessing.html#listeners-and-clients)、[AnyIO cancellation](https://anyio.readthedocs.io/en/stable/cancellation.html)、[ItsDangerous URLSafeSerializer](https://itsdangerous.palletsprojects.com/en/stable/url_safe/)、[Starlette middleware](https://starlette.dev/middleware/)、[Loguru](https://loguru.readthedocs.io/en/latest/api/logger.html)、[HTTPX MockTransport](https://www.python-httpx.org/advanced/transports/#mock-transports)、[SQLite](https://docs.python.org/3.13/library/sqlite3.html)。文档核对不等于替换已实测。
+
+### SQLite、Playwright 与 Ruff 的本轮增补
+
+2026-10-16，用户同意将 SQLite、Playwright、Ruff 加入计划。三项选型已确认；下述具体存储划分与迁移步骤作为新稿供审阅，不把同意加入依赖扩大成整份 Plan 或数据迁移的执行批准。
+
+SQLite 通过 Python 标准库 `sqlite3` 使用，不新增 PyPI 同名包、数据库服务或 ORM。拟在数据根建立 `state.sqlite3`，只承担运行控制状态：任务及依赖、任务去重键 / 合并别名、生成 attempt 与额度、发布清单 / 恢复阶段、当前配置版本指针。原始队列与采集 cursor、episode / 知识 / 关系 / 认知 / 上下文内容、外部来源、配置历史正文和不可变字节版本仍为文件；这些内容不是同一状态的数据库与 JSON 双写。任务的输入 / Prompt / 结果哈希引用随任务入库，领域内容的现有版本引用保持不变。具体步骤见 M01-R6。
+
+数据库接管的状态以数据库为唯一当前权威；旧 `tasks/*.json`、`commits/*.json`、`config.json` 仅保留为迁移前证据，不继续读写或在数据库损坏时静默回退。配置历史正文仍在私有 `config/<version>.json`，更新全程持 Store 锁，选择未占用版本号，以不覆盖方式保存后再事务切换当前指针；失败遗留版本不复用覆盖，版本号允许跳号。旧 `config.json` 的兼容说明同步到 README。文件字节版本先保存，数据库再引用；异常留下未引用文件可以保留，不能引用尚未落盘的内容。SQLite 事务不包办用户文件的多步替换：提交意图先入库，句柄保护 / 冲突恢复照旧，文件核对完成后再提交完成状态和处理位置。未 committed 时，即使全部文件已写完也按原清单安全撤销；已 committed 只补后继状态，不重跑模型。运行中数据库故障也须阻止半成品被读取或继续发布，无法安全恢复时保留证据并暂停受影响范围，详见 M01-R6.4。离线迁移须同时停后台、任务树和全部采集入口，等待在途 Hook 结束；整根备份及零新写入回退检查包含队列 / cursor，不能只以 Store 锁或数据库状态证明停写。数据库只由产品控制层访问，Hermes、Hook 与浏览器不直接打开它。
+
+Playwright 用于长期浏览器行为回归，Ruff 用于开发静态检查；两者分别放入 `browser` / `dev` dependency group，由 uv 锁定，产品运行和 Hermes PM 环境不安装它们。浏览器只准备 Chromium。现有 unittest 继续使用，新增浏览器组单独运行，不为 Playwright 引入 pytest。M08-R3 明确只覆盖现有 API 测试无法执行的 JavaScript 交互，布局 / 配色仍作一次性人工检查。
+
+运行模型沿本轮讨论明确：Uvicorn 后台使用 asyncio 事件循环，AnyIO 管理协程生命周期、超时和取消；HTTPX 使用异步客户端。Hermes 仍在独立进程同步调用 `run_conversation()`。SQLite 事务、文件 / 管道阻塞操作在工作线程中执行，同一事务的连接创建、使用与关闭留在同一线程，不在协程中直接执行阻塞 SQL，也不把取消等待视为数据库已回滚或子进程已停止。业务优先级、预算及恢复规则调用现成执行 / 存储机制，不重新实现事件循环或数据库事务框架。
+
+依据：[sqlite3 事务与线程约束](https://docs.python.org/3.13/library/sqlite3.html)、[Playwright Python Library](https://playwright.dev/python/docs/library)、[Ruff 配置](https://docs.astral.sh/ruff/configuration/)、[AnyIO](https://anyio.readthedocs.io/en/stable/)。本轮核对接口文档，未安装或执行新组合。
+
+## 移除转发后如何保留预算
+
+本地固定源码已核对：`agent/client_lifecycle.py` 的 `_create_request_openai_client` 和共享客户端重建均走 `AIAgent._create_openai_client`；`agent/agent_runtime_helpers.py:create_openai_client` 接受 `http_client` 并默认关闭 SDK 内层重试。这是本版的适配位置，属于固定源码的内部接口，不宣称是公开稳定 API。`agent/transports/base.py` 只处理消息转换，不承担网络发送；`pre_api_request` Hook 异常会被吞掉，不能拿它作硬预算门禁。
+
+M01-R1 在这个唯一客户端构造点接入 HTTPX 的发送前钩子 / 极薄 transport 装饰，仅向父进程申请额度与保存脱敏请求快照，再由原 SDK 直接请求真实 endpoint。HTTP 编码、TLS、连接池、SSE、响应解析、工具循环和重试继续由依赖执行。装饰不监听端口，不解析响应，不新建 provider 接口。实例初始化、请求专用客户端、重试后客户端重建都必须被同一适配覆盖。
+
+额度持久化确认后才能发送；父进程断开、拒绝或任务失效则拒发。默认第 16 次正常完成允许校验和发布，第 17 次必须在发送前拒绝；工具往返和重试仍各按实际生成请求计数，重启不清次数。只有底层能证明还没发送的连接失败可按原 attempt_id 退额；读超时、写失败、已发送后断流及未知结果不退。自动压缩 / 其他辅助生成若不能经过同一入口则继续关闭，不建第二条隐式模型通路。必须通过实际 AIAgent 探针才能采用此适配。
+
+程序工具沿现有工具注册调用 Python 函数；需要父进程权威状态的操作经标准库 Connection 字节消息交接。只支持已有业务操作与预算确认，单任务串行请求 / 对应回复，限制尺寸和操作名；父进程把鉴权连接绑定它创建的 task_id，不相信子进程另报任务身份。stdout 不承载业务协议，Hermes 日志隔离。关闭连接或取消时退出等待、停 Job 后再释放名额；R1.3a 在 R1.2 业务接入前验证连接、认证、收发各阶段的有限截止 / 取消和线程回收，外层 AnyIO 取消不等于同步管道等待已终止。不另建通用 RPC 框架、消息总线或 HTTP 工具服务器。
+
+## 需要同步的 Design 差异
+
+本稿不把下列提案写成已批准 Design：
+
+| 当前 Design / 实现 | 本稿提案及影响 |
+| --- | --- |
+| 修订 2 仍使用 HTTPX 做模型转发 | 删除模型转发，SDK 直连；公开 Hook / MCP / Web 业务接口不因此更换 |
+| 真正模型 / 搜索密钥只在控制层 | SDK 直连必须让当前任务子进程取得私有连接配置。通过父子私有通道交给 SDK 内存，不进入模型载荷、任务输入 JSON、stdout 日志、URL 或历史；不伪称仍只在父进程。任务终止关闭并清理临时状态 |
+| 手写名称图为旧实施安排 | 用 NetworkX 承担有向多边结构，领域内容仍为 JSON / JSONL，图仍可重建，不引入图数据库；SQLite 只负责下述控制状态 |
+| 修订 2 仍要求全部文件持久化、不引入数据库 | 用户已同意加入 SQLite；本稿提出运行控制状态入库、领域内容保持文件。此项覆盖旧“不引入数据库”约束的拟修订范围，具体数据归属、迁移和回退随新稿审阅 |
+
+用户本次要求授权计划重写，不视为自动批准以上具体替换实现。实施前按 Exploratory 人工批准点确认本稿，并同步统一 Design 的连接 / 凭证边界；不得沿旧“持续实施”记录越过这次“先重写 Plan”的范围。OS 写隔离仍按既有决定留在后续 Issue。
+
+## 实施顺序与文件归属
+
+| 顺序 / 模块 | 本轮任务 | 文件与交付 |
+| --- | --- | --- |
+| 1 / [M01](modules/01-runtime/plan.md) | R3.1 项目依赖准备；R2 FastAPI；R6 SQLite；R1 SDK / Connection；R3 启停；R5 通用能力复用；R4 回归 | 原 M01 文件，以及 `state.py`、离线迁移脚本、SQLite 契约测试、Ruff 配置 / CI |
+| 2 / [M04](modules/04-knowledge/plan.md) | R1 复用图依赖；R2 内容链和语义 | `knowledge.py`；不重写来源 / 保存系统 |
+| 3 / [M06](modules/06-expansion/plan.md) | R1 复用 Hermes Tavily；R2 覆盖与核查 | `expansion.py`、`tools.py`、`hermes.py` |
+| 4 / [M02](modules/02-capture/plan.md) | R1 核对采集契约；R2 真实 Hook 字段 | `capture.py`、`sources.py`、产品 dispatcher / hooks |
+| 5 / [M03](modules/03-episode/plan.md) | R1 生命周期适配；R2 修订和收尾 | `lifecycle.py`、`episode.py`、dispatcher |
+| 6 / [M05](modules/05-cognition/plan.md) | R1 复用证据链；R2 语义对照 | `cognition.py`；不另写认知评分器 |
+| 7 / [M07](modules/07-context/plan.md) | R1 FastMCP / Client 测试 / 启动；R2 注入 / compact；R3 反馈 | `mcp.py`、`context.py`、插件 / Prompt |
+| 8 / [M08](modules/08-web/plan.md) | R1 接入框架路由；R2 浏览器验收；R3 Playwright 回归 | `web/` 只改受影响交互；增加 `tests/browser/` 并复用归属业务方法 |
+| 9 / 本文 A1 | 全链验收与文档 | 根 README、Spec 入口、CI / Python 规则及证据索引 |
+
+M01 先准备环境并拆清任务进程导入边界；FastAPI 迁移可先使用已有执行适配独立验收，再完成 SQLite 控制状态和“真实 AIAgent → SDK 直连 → 持久预算确认 → 一次业务工具 → 结果保存”。两条验收线分别记录，不让 HTTP 框架迁移等待 SDK 内部接口探针。R5 分块替换，数据库已接管的状态不再做文件锁 / atomic_save 的重复迁移。每块通过后删除被替代生产路径；图和搜索继续复用已有契约。
+
+## 验证方式与门禁
+
+产品控制 / MCP / Web 使用项目 uv 环境；Hermes 任务继续使用官方 PM 已准备解释器。检查两边各自实际依赖，不要求 PM 安装 FastAPI / Uvicorn / NetworkX，也不再要求整个产品锁与 PM 环境完全相同。只在实施任务中修改依赖，锁文件由 uv 生成。
+
+实施后的环境准备与检查统一为下列命令；本轮文档重写不执行产品验收：
 
 ```powershell
+uv sync --locked --group dev --group browser
+uv run --locked --group browser python -m playwright install chromium
 $env:PYTHONUTF8 = '1'
-$env:PYTHONPATH = Join-Path (Get-Location) 'src'
-python -m unittest discover -s tests -p 'test_product_*.py' -v
-python tests/test_capture.py
-python .codex/hooks/test_pre_push_guard.py
+$env:PYTHONPATH = 'src'
+uv run --locked --group dev ruff check src/distillai plugins/distillai scripts tests .codex/hooks
+uv run --locked python -m unittest discover -s tests -p 'test_product_*.py' -v
+uv run --locked --group browser python -m unittest discover -s tests/browser -p 'test_*.py' -v
+uv run --locked python tests/test_capture.py
+uv run --locked python .codex/hooks/test_pre_push_guard.py
+uv lock --check --offline
 git diff --check
 ```
 
-预期：unittest 以 `OK` 结束，已有两组脚本退出 0，空白检查退出 0。产品测试全部使用临时数据根、假时钟和本机合成响应，不使用个人会话、真实密钥或外部模型。每个命令单独核对退出码；真实 API / 停树 / 句柄 / Desktop 验证单独执行并记录，CI 不取得个人凭证。OS 写隔离不列入本次验收。
+依赖同步与 Chromium 安装是联网准备，不能称为离线验证；准备完成后的 Ruff / 合成测试不调用外部模型或搜索。预期：检查与测试退出 0、unittest 为 `OK`、锁一致、无 diff 空白错误。浏览器缺失明确失败，不能静默 skip。按模块先跑对应组，最终跑全量；不新增覆盖率目标，不对模型措辞作永久断言。
 
-统一启动脚本计划接口为 `-Action Check|Serve|Stop|Mcp|Web -HermesSource <绝对源码路径>`；路径由实际配置传入。`Check` 只报告现有环境，不触发 PM 安装；`Serve` 使用已准备环境并管理单例；`Stop` 停止任务后退出；`Mcp` 桥接；`Web` 交换一次性引导凭据。实现后将实际解释器和路径写入操作文档，不把开发机路径嵌入源码。
-
-模块完成时记录真实变更、命令、结果、失败修复、来源版本及 Design 偏差；需要本地 Commit 时仅暂存该模块相关路径。2026-10-13 的前次本地归档授权发生在实施批准之前；当前批准状态以 G0 和下方执行记录为准。Push / PR / Review 发布 / Merge 仍沿独立授权边界。
-
-## Task 9：完整闭环、文档和验收
-
-**Files:** Modify `README.md`、`.agents/rules/python.md`、`.agents/rules/github-actions.md`、`.github/workflows/ci.yml` 及本目录 Plan 执行记录；一次性证据保留 `.artifacts/initial-development/`，不提交原始个人材料。
-
-- [ ] **Step 1：运行离线契约检查。** 执行上面的全套命令；CI 延用 Windows job 和固定 action SHA，记录实际 PR head / base / tested SHA。OS 特权或 Desktop 组不伪造 CI 通过，离线失败先修复再进入验收。
-- [ ] **Step 2：执行一条合成的端到端会话。** 在独立测试数据根使用 Codex Desktop：启动 → 连续交流 → 切换 / 收尾 → M04 / M05 → 子图 / 候选 → 新问题筛选 → MCP 查询 → 用户新表现 → 再分析；实际队列行号、各提交版本和交付状态都可追溯。不把模板的虚构引用当 fixture。
-- [x] **Step 3：验证外扩进入同一闭环。** 在 G3 已通过的服务上核查一个具体主张，保存读取原文 / 版本和未核查部分，交 M04；观察 M07 依赖刷新。确认外部结果没有自动写成用户掌握。
-- [x] **Step 4：执行异常恢复。** 在合成任务中分别丢通知、停止后台、撤销工作路径写权限、制造提交中断、同期编辑、取消排队 / 运行中的 MCP 查询；核对原材料、个人编辑、计数、处理位置及未发布文件保持契约。详细安全窗口由 M01 负责，此处只确认模块交接。
-- [ ] **Step 5：验证 compact 与日常体验。** 当前轮已有选择时触发 compact 两次，核对同一文字 / 版本恢复且没有新筛选请求；后台繁忙仍有独立筛选名额。记录实际等待、调用次数、输入体量、失败继续回答，以及中立反馈没有诱导认可。耗时实测只报告，不自行加入未批准的 SLA。
-- [x] **Step 6：验证 Web。** 查看四入口，配置保存 / 待生效版本、知识编辑、episode / 认知纠错任务、来源 / 历史版本跳转；再检查键盘、窄屏、错误输入和并发冲突。截图用合成数据。
-- [ ] **Step 7：回查四项验收并同步状态。** 按下表建立证据清单；只有对应实施和验收确实完成才标 `implemented`，保留未执行项和实际阻塞。不把“已写 Plan”记录为实施完成。
-
-| 验收方向 | 必须看到的结果 | 证据位置 |
+| 门禁 | 放行依据 | 不能替代它的证据 |
 | --- | --- | --- |
-| 功能完整 | 八模块所有实施任务完成，搜索、自然反馈和 Web 编辑均进入闭环 | 八份 Plan 执行记录与本 Task 记录 |
-| 来源可靠 | 原始队列 → episode → 详情 / 假设 → 检索 / 外扩来源均可回查当时版本；修订 / 待关联有明确身份 | 来源引用、版本和提交 / 任务 ID |
-| 认知更新有效 | 助手解释不记为用户能力，受助与独立表现区分，竞争解释可因有区分力的新表现修订；未知保留 | 同一对象的前后观察 / 假设 / 判断及人工审阅理由 |
-| 日常体验合适 | 原任务可继续、素材可跳过、无候选空返回、错误明确、compact 恢复原选择、Web 失败保留输入 | Desktop 可观察记录、Web 截图和交互记录 |
+| G0 新方案批准 | 本稿与连接 / 凭证、SQLite 权威划分 / 迁移边界明确获批，统一 Design 同步 | 同意增加三项选型、旧 Plan approved、旧继续实施授权 |
+| G1 新执行与框架 | SQLite 事务 / 重启 / 文件恢复成立；直连每次请求受额度约束；ASGI 启停、健康与业务授权成立；项目 / PM 导入边界各自检查 | 声明了依赖、旧代理探针、只测 import |
+| G2 真实 Desktop | 采集 / 中断 / 终止时序、冷启动、additionalContext、两次 compact、MCP 查询取消有实际证据 | 模拟 Hook、stdout 成功、预启动后连接成功 |
+| G3 搜索复用 | 固定 Hermes Tavily Search / Extract 实际接通，来源可回查、错误和密钥处理成立 | 旧重复 HTTP 实现曾通过、localhost 模型输出 |
+| G4 产品闭环 | 八模块链、模型语义、来源 / 用户证据和浏览器交互审阅完成 | 测试条数、所有任务格式正确、completed=True |
 
-## 回退与数据边界
+### A1：完整验收与文档同步
 
-先在合成数据根验证，再接入获准的真实会话。首次产品启用时关闭旧采集验证插件的相同会话触发，保留其文件，不自动删除、转换或把 `.distallAI` 数据搬入 `.distillAI`。用户退出产品时卸载 / 停用接入配置，显式停止后台；数据默认保留。
+**Files:** `README.md`、`.agents/rules/python.md`、`.agents/rules/github-actions.md`、`.github/workflows/ci.yml`、本目录入口和模块记录；临时证据写 `.artifacts/initial-development/`。
 
-业务任务失败沿 M01 清单恢复，发生 `recovery_conflict` 暂停冲突范围并保留前后版本，不覆盖用户再次编辑。回退程序版本须先停止任务并核对记录兼容性；出现不兼容时保留数据及诊断，不用重建索引替代业务迁移，也不恢复成旧原始 payload 格式。
+- [ ] **A1.1 离线与依赖检查。** 先准备锁定依赖与 Chromium，再跑上面检查；CI 在原 Windows job 按锁安装 dev / browser 组、准备 Chromium、运行 Ruff / 既有组 / 浏览器组，不下载 Hermes / 个人数据或用个人密钥。同步 Python / Actions 规则的旧零依赖表述，Ruff 只启用本稿明确的错误规则。核对实际 PR tested SHA 后才能声称 GitHub CI 通过；此项不包含远端写授权。
+- [ ] **A1.2 Desktop 闭环。** 合成会话贯通采集 → episode 关闭 / 修订 → M04（含空结果）→ M05 → M07 → 查询 / 新用户表现再分析。检查实际来源和每次固定版本，不用编写好的 localhost 模型响应代替语义评价。
+- [ ] **A1.3 恢复与外扩。** 丢通知、进程终止、旧输入、并发编辑、查询取消、发布中断各复用现有用例；再做一条真实搜索 / 读取 → M04 → M07 链。失败不发布、不推进、不丢用户修改，外部内容不当用户掌握。
+- [ ] **A1.4 日常体验。** 四入口浏览 / 编辑、409 和错误留输入、旧异步响应不盖新内容、键盘 / 窄屏、两次 compact 原选材恢复。检查原任务仍可继续、无候选为空、自然反馈无诱导。
+- [ ] **A1.5 更新实际状态。** README 写实际解释器 / 启动 / 锁 / 环境边界；规则文件删除已过时的零依赖假设；模块记录写新命令、结果、版本和证据。按功能完整、来源可靠、认知更新有效、日常体验四项逐项审阅后才标 implemented。未过项目明确保留，不能用比例代替验收。
 
-## 相对 Design 的实质偏差
+## 永久测试与一次性证据
 
-本 Plan 对齐用户批准的 Design 修订 1：OS 写隔离延后，普通任务子进程保留停树和副本发布。`config.py`、`server.py`、`windows.py`、`sources.py` 分别组织配置、HTTP、Win32 和来源职责；不增加服务或运行层。
+先复用已有测试。同一契约因替换框架而换启动 fixture，不另复制测试矩阵。新增覆盖旧组遗漏的长期失败路径：直连重试 / 重建的预算门禁、管道断开拒发、多关系 / 对称查询、搜索来源，以及 SQLite 并发登记 / 最后额度 / 提交崩溃一致性。Playwright 只补 API 测试无法观察的浏览器留输入、旧响应竞争与安全文本渲染；不按 HTTP 状态码复制 API 矩阵。测试验证公开结果和数据边界，不断言私有类名、路由函数位置、依赖字符串或代码行数。
 
-Python 图查询拟先用标准库字典 / 邻接映射，HTTP 拟先用标准库线程服务；二者在 M01 / M04 验证现有契约，不能满足时记录事实再同步 Design。MCP 版本、环境和搜索仍有明确验证 / 选择任务，不假设已选定；写隔离及 MXC / token / 沙箱 stdio 转发退出当前实施清单。
+源码检查“代理和 Handler 已删除”、依赖锁 / 环境核对、Desktop 字段、模型语义、真实公开网页和布局截图属于一次性检查，写执行记录。保留必要的无授权 / 跨源拒绝和非法来源测试，因为这是持续安全 / 数据契约。
+
+## 本轮重写记录与回退
+
+本轮只重写总 / 八模块 Plan，并同步计划入口。旧执行日志保留在各文件下方，旧完整 checklist 由 Git 保存。本稿新编号使用 M01-R1 等，不继续累计旧 140 步；历史完成比例不换算成新进度。所有新步骤未勾选。
+
+首稿文档验证（补充审计前）：`python .artifacts/verify_plan_rewrite.py` 退出 0，核对九份 draft、75 个未执行步骤、九份历史记录原文保留及四个原有修改文件 SHA-256 未变；`python .artifacts/initial-development/check-docs.py` 退出 0，32 份文档 / 404 个本地链接和锚点无错误；`git diff --check` 退出 0。检查脚本与结果留本地忽略目录，不新增永久文档测试；未运行产品、真实模型、Desktop 或 CI 验收。
+
+同日补充复用审计：核对现有字段校验、Win32 绑定、锁、MCP 异步请求、分页游标、Cookie、诊断与测试服务，新增上表复用范围；总 / M01 / M07 / M08 Plan 同步，Connection 取代首稿的自写 stdout 消息分帧。相同文档检查重新退出 0：九份 draft、81 个待执行步骤、历史记录 / 原有四文件保持，32 份文档 / 404 个本地链接无错误，diff 空白检查通过。库接口已查文档，替换的运行效果未验；没有新增产品代码、依赖安装或 Commit。
+
+同日用户补充 Loguru / FastAPI 测试 / FastMCP 要求后：替换日志选型，明确官方 TestClient / dependency_overrides 与 FastMCP 内存 Client / stdio 传输，新增 settings / 定时器 / 路径 / 单文件保存复用任务，总 / M01 / M03 / M06 / M07 / M08 及 Design 阅读状态同步。文档核对结果为九份 draft、87 个待执行步骤，九份历史记录与原有四文件不变；32 份文档 / 404 个本地链接无错误，diff 空白检查通过。以上均是计划 / 文档验证，未安装新包或执行产品改造。
+
+同日依赖审查后，用户同意加入 SQLite、Playwright、Ruff；本稿与 M01-R6 / M08-R3 补齐职责、事务、离线迁移、验证及依赖组。SQLite 数据划分为草案，选型确认不代表迁移已批准或执行；此前 87 步与验证数字保留其当时含义。
+
+2026-10-17 用户接受第二轮审查的四项修正：迁移覆盖采集停写；发布恢复沿未提交撤销 / 已提交补后续的原规则，并处理存活进程数据库故障；管道接入先验证有界取消；episode 定时器允许休眠迟到执行。总 / M01 / M02 / M03 Plan 与待办同步。本次接受对应上述修正，文档继续保持 draft / 未执行，不扩展为真实数据迁移或代码实施授权。
+
+实施按小块替换并保留 Git 记录；先用合成数据根验证 SQLite 迁移，真实数据切换按获批新稿和 M01-R6 离线步骤执行。原始队列 / 内容格式保留；迁移后的控制状态不能回退读旧 JSON。出现兼容问题停止受影响任务、保留数据 / 版本 / 错误；已产生新写入时不能用迁移前备份覆盖恢复。已有未提交改动不覆盖、不清理；本轮没有安装、代码重构、产品实测、Commit 或远端写入。
+
+依据：[FastAPI lifespan](https://fastapi.tiangolo.com/advanced/events/)、[HTTPX hooks](https://www.python-httpx.org/advanced/event-hooks/)、[HTTPX transports](https://www.python-httpx.org/advanced/transports/)、[NetworkX MultiDiGraph](https://networkx.org/documentation/stable/reference/classes/multidigraph.html)。Hermes 依据按[本地源码路由](../../../research/runtime/README.md#本地源码路由)读取上述固定 SHA，不用网页源码替换本地版本。
+
+## 2026-10-17 批准与执行
+
+用户明确批准本次重写总 Plan 与八模块 Plan，授权完成既有代码重构与计划内新功能。需要用户决策或外部条件的事项集中写入 [待办](pending.md)，不阻止独立可实施步骤；保留既有修改，不包含远端写入授权。
+
+## 2026-10-17 第一批重构证据
+
+项目 uv 环境完成锁定安装，PM Python 3.14.7 / 固定 Hermes SHA 的 AIAgent 导入检查退出 0；产品环境与任务环境已拆开。FastAPI / Uvicorn 接管 HTTP，显式路由复用原业务；API / Web 以官方 TestClient 和 dependency_overrides 运行。旧 Handler、模型代理、HTTP 程序工具入口及任务 proxy token 已删除；请求历史脱敏转到执行适配。
+
+SQLite 已接管任务、去重键 / 别名、依赖、attempt / 次数、提交清单和配置指针。原存储崩溃 / 冲突测试改走数据库；真实写锁超时测试验证未发送模型、停树可结束、业务不可读、重启恢复。离线迁移工具通过合成副本的完整备份、重复核验、预算保留、零新写入回退和新增 Hook 材料后拒绝回退；没有迁移真实数据。修复源读取中新建 Store 重入文件锁的死锁，现有纠错组复跑通过。NetworkX 替换手写邻接；Portalocker / pathvalidate / boltons 替换普通锁、路径词法和单文件保存，Loguru 记录白名单采集诊断。
+
+TaskPipe 采用标准库认证 AF_PIPE / send_bytes / recv_bytes；阻塞 accept / 认证由归任务 Job 的通信进程持有，公开 Process 终止 / join 提供有界回收，不遗弃等待线程。连接前、认证未完成、错误密钥、断开和正常往返已在实际 Windows 通过；跨 PM 主调用与父进程程序工具通过。实际 AIAgent 新探针七场景通过：screening 1、query 2、source 2、文件 / Shell 维护 3、503 恢复 3、第 16 次有效完成 16、第 17 次拒发 16。发现 SDK 将任意发送钩子异常包成连接错误而重试；窄 HTTPX send 适配在额度拒绝时返回本地 400，不发送请求，重跑通过。模型请求编码 / TLS / SSE / 解析 / 模型循环仍由原 SDK 执行。
+
+当前完整产品组 178 tests / OK（39.739s）；Ruff、uv lock --check --offline、git diff --check 退出 0。新增 SDK 组 4 项与 IPC 组 3 项，旧 HTTP 代理用例移至新 SDK 契约覆盖；没有为删除名称写断言。证据在 .artifacts/after-direct-all.log、direct-hermes-probe.log、direct-hermes-results.json 和 probe_state_migration.py。尚未完成全部 M01 / G1：模型参数探针、父进程死亡 / 大消息等完整 IPC 窗口、剩余通用能力、真实模型与 Desktop / 搜索新组合仍需后续证据。没有 Commit / Push 或远端写入。
+
+## 2026-10-17 第二批：原生框架、真实 stdio 与浏览器回归
+
+产品环境原生 FastMCP 4.1.0 接管两个工具，参数引用共用 sources.py 的 Pydantic 严格类型；HTTPX AsyncClient 由 FastMCP lifespan 管理，取消用 AnyIO shield 请求同一 invocation。内存 Client 四项通过；一次性 PythonStdioTransport 探针验证真实独立 Python 进程的工具列表、ID 精确查询、严格输入拒绝、反馈幂等和 stdio 退出后独立后台存活，全程零模型请求。探针发现查询方法被同名 query 属性遮蔽、HTTP 返回 422，补原 HTTP 组的公开查询断言复现后修复。真实 Desktop 工具全名、冷启动和 stdio 取消停树仍未完成。
+
+FastAPI lifespan 内由 APScheduler 管理周期扫描 / 外扩和持久 episode 截止的 DateTrigger，后者允许 misfire；Uvicorn 实际监听后才写 instance。启动组新增忙扫描回归：扫描间隔设 3600 秒，在当前扫描已过 dispatch 后登记任务并唤醒，旧实现丢失唤醒、新任务不执行；现在借 APScheduler 完成事件补一次合并唤醒，任务及时成功。任务 Runtime.wait 与调度各自消费唤醒，避免共享 Event 被等待方清除。配置源 CLI / 获准环境 / launch.json 的优先级已通过。休眠迟到与真实 Windows 休眠探针仍待接续，不能据此勾完 R5.7。
+
+直接 AIAgent 七场景再次通过，实际 provider 共收到 43 个请求：无工具筛选 1、只读查询 2、来源工具 2、文件 / Shell 维护 3、503 恢复 3、第 16 次完成 16、第 17 次拒发 16。此轮实际请求还核对 max_tokens、temperature、top_p、DeepSeek thinking、model；登记后修改配置，已登记筛选仍使用原固定参数，其后任务使用新参数。共享 SourceRef 的 PM 跨环境导入与实际调用同时通过。真实模型语义仍未验。
+
+M06 删除重复 Tavily HTTP 构造，固定 Hermes 私有请求 / 归一化入口接受显式任务 key；仅任务进程持有相应私有配置，HTTPX 官方 endpoint / 无重定向 / 实际响应上限沿窄 client 适配。新的实际 AIAgent + 真实 Tavily keyless Search / Extract → M04 → M07 → 用户指定编辑探针通过，14 次合成模型请求；逐主张缺口、不可变版本、材料次数不增加、外部证据不算用户掌握均有结果。真实付费 key 路径与模型语义不冒充已验。
+
+tests/browser 复用真实 run_service / FastAPI / Uvicorn / SQLite 与合成维护回调，不导入 Hermes、不读取个人材料；每页通过一次性引导换 Cookie。Chromium 实际执行五项 JS 回归通过：两个独立会话真实成功 / 409 且正文和原因保留；保存失败后保留输入并可重试；迟到旧详情不覆盖当前记录；提交期间的新正文 / 原因在成功回调和重新读取后保留；脚本 / HTML 按文字显示且无副作用。路由拦截控制响应先后，不用固定 sleep。失败只保存合成截图到 .artifacts/browser，不开启 trace / HAR。Windows CI 已接入锁定 browser 组、Chromium、Ruff 和独立浏览器命令；本地通过不代表 GitHub CI 已运行。
+
+验证证据：.artifacts/after-browser-all.log（第二批前段 182 tests / OK）、browser-regressions.log（5 tests / OK）、scheduler-wake-red.log / scheduler-wake-green.log（修复前失败 / 启动组 6 tests OK）、direct-hermes-results.json、fastmcp-stdio-results.json、direct-expansion-results.json；最终完整组和静态 / 文档检查以本节下方收尾记录为准。原独立 capture 行为组与 push guard 16 tests 均通过。所有输入均为合成数据；没有迁移真实数据、Commit、Push 或远端写入。
+
+### 第二批收尾核验
+
+当前源码最终完整产品组 **183 tests / OK，44.214s**；独立 Chromium 组 **5 tests / OK，18.264s**。Ruff、uv lock --check --offline、32 份文档 / 419 条本地链接检查与 git diff --check 均退出 0；独立采集行为检查与 push guard 16 tests 通过。证据为 `.artifacts/batch2-final-product.log`、`batch2-final-browser.log`、`capture-regression.log` 和 `push-guard-regression.log`。启动测试停止 scheduler 时可见 APScheduler 的 CancelledError 诊断，业务停机 / 测试结果均为成功；日志整合和完整休眠窗口仍在未勾步骤中。
+
+本轮未创建 Commit 或执行远端写入；Goal 尚未完成。当前 Goal 查询状态为 usageLimited，未自行恢复或标记完成；有效续接范围和外部验收仍见 pending.md。
+
+## 2026-10-17 恢复后第三批：Windows、管道与到期恢复
+
+Goal 已恢复 active，继续用户批准的原完整总 Plan / M01–M08；恢复状态本身不表示完成。前一目标状态 usageLimited 记录保留为历史，当前仍有字段模型 / 工具 schema、诊断整合和接入工作，不能整体归为外部阻塞。
+
+Windows 文件创建、读写 / seek / truncate / flush、最终路径、句柄流枚举 / 删除与 Job 绑定复用 pywin32；原始 NtCreateFile 根句柄相对打开、NtSetInformationFile 根句柄相对 rename、NtResumeProcess 和 100ns FILETIME 读取 / 恢复仍是窄适配。实际探针确认 pywin32 日期把 132537600000000007 变成 132537600000000000；带 RootDirectory 的库 rename 返回 WinError 87，原生相对 rename 成功。未用绝对路径重新解析来规避。pywintypes.error 不继承 OSError，窄适配转换回已有异常契约；PyHANDLE 管理覆盖到的句柄生命周期。9 项 Windows、23 项存储、11 项产品采集组通过，包含追加 / 截断 / 空文件、精确时间、重指向目录中的创建 / rename 不到外部、冲突不覆盖和停父子孙。
+
+IPC 组从 3 项补到 6 项，实际 Windows 进程验证：accept 前未连接、连接后不认证、错误 key、认证后不回复、双向 8MiB 阻塞写、父进程突然死亡。Connection.poll 只协调已连接消息；实际连接 / 认证截止、Job.stop、通信进程 terminate / join 保证退出，未用自写帧。双向阻塞前分别确认接收端已看到待收数据，停止后写线程和两个进程均有界退出；父进程死亡后 Job 内通信进程与已认证 peer 均终止。测试曾在停止后尝试设置被杀进程等待的 multiprocessing.Event，诊断堆栈证明是测试清理的 Condition 锁卡住；改为不操作已终止进程的共享等待器后通过，生产协议未靠放宽超时通过。证据 ipc-complete-phases.log / ipc-diagnostic.log。
+
+Store 新增嵌套 / 跨线程互斥和进程死亡后文件锁释放回归；SQLite 状态组 9 项通过。原始事务竞争 / 额度 / busy 数据库拒发与停树仍通过。调度组 7 项通过：在进程未重启而事件循环暂停跨过原持久截止后，只登记一次 closing；暂停期间出现新 request，旧截止不再登记。周期扫描设为 3600 秒，避免用周期补扫冒充 DateTrigger 的迟到处理；不修改实际系统时钟，也没有让电脑休眠。真实 Windows 休眠 / 唤醒与 Desktop 接入仍单列验收。
+
+图查询新增对称自环与双向多边去重回归，5 项通过。一次性合成 500 知识点 / 1000 关系，与当前 HEAD 旧实现的 90 组公开邻接查询逐项相同，名称 / 别名结果和新实例重建相同；温缓存重建旧 1.7220s / NetworkX 1.6981s，只记录代表规模，不声称性能显著提升或固化节点数测试。M05 三类来源 / 字段归属 / 等待后继原组在新 SQLite / SDK / 框架组合复跑通过，真实模型语义仍未验。
+
+当前完整产品组 **192 tests / OK，56.532s**；Ruff 与 uv lock --check --offline 通过。固定 PM 解释器的实际 AIAgent 七场景再次通过，43 个合成 provider 到达请求，包含文件 / Shell 工具、503、16 次完成 / 17 次拒发和固定参数；PM 不新增产品依赖。证据 third-full-product.log、third-direct-hermes.log、third-state-locks.log、third-scheduler-late.log、third-graph-results.json、third-win32-gaps.json 均在忽略的 .artifacts。浏览器与文档收尾检查另记；CI / Desktop / 真实模型未冒充通过，没有迁移真实数据或远端写入。
+
+### 第三批收尾核验与本地提交范围
+
+新 Windows 绑定下再次执行独立 Chromium，**5 tests / OK，19.156s**；完整产品为 **192 tests / OK，56.532s**。Ruff、uv lock --check --offline、32 份文档 / 423 条本地链接与 git diff --check 通过。实际 PM 的直接 AIAgent 七场景、固定参数和 43 个合成上游请求再次通过；未读取个人材料、未修改用户实际数据根。探针 / 日志均留在被忽略的 .artifacts；未遗留本轮测试进程，原用户 Hermes gateway 保持原状。
+
+本批本地提交范围是已批准的框架 / SDK / SQLite 基础迁移、相关边界回归和 Spec 同步；剩余步骤继续保留 approved 与未勾状态，不以基础提交冒充完整实现。Goal 维持 active，下一阶段继续领域 / 工具参数模型、Loguru 与剩余文件故障闭环；远端写入仍需对应授权。
+
+<a id="historical-execution"></a>
+
+## 重写前的执行记录（历史证据）
+
+以下保留原记录、日期和旧 Task / Step 编号，便于回查。旧完成比例、批准状态、解释器组合及转发探针仅描述当时实现；不作为本稿的执行指令或本轮验证结果。旧计划全文可从 Git 中重写前的版本回查。
 
 ## 执行记录与 Plan 状态
 

@@ -8,13 +8,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $productSource = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../src'))
-$controllerPython = if ($HermesPython) { $HermesPython } else { (Get-Command python -ErrorAction Stop).Source }
-if ($Action -in @('Mcp', 'Web') -and -not $HermesPython) {
-    $configRoot = if ($DataHome) { $DataHome } elseif ($env:DISTILLAI_HOME) { $env:DISTILLAI_HOME } else { Join-Path $env:USERPROFILE '.distillAI' }
-    $launchPath = Join-Path $configRoot 'config/launch.json'
-    if (Test-Path -LiteralPath $launchPath) {
-        $controllerPython = (Get-Content -LiteralPath $launchPath -Raw | ConvertFrom-Json).hermes_python
-    }
+$controllerPython = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../.venv/Scripts/python.exe'))
+if (-not (Test-Path -LiteralPath $controllerPython -PathType Leaf)) {
+    throw 'Prepare the product environment first: uv sync --locked'
 }
 $mode = @{ Check = 'check'; Serve = 'start'; Stop = 'stop'; Mcp = 'mcp'; Web = 'web' }[$Action]
 $pythonCode = 'import sys;sys.path.insert(0,sys.argv.pop(1));from distillai.__main__ import main;main()'

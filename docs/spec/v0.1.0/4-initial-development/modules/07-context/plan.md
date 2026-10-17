@@ -7,72 +7,62 @@ status: approved
 decision_mode: user-approved
 ---
 
-# M07：上下文、筛选、MCP 与反馈 Implementation Plan
+# M07：复用 FastMCP、上下文与 Desktop 交付 Implementation Plan
 
-> 执行者使用 `executing-plans`，按本模块 checkbox 推进；默认主 Agent 实施。
+> 2026-10-17 用户批准重写稿并授权实施；按 `executing-plans` 由主 Agent 持续执行。
+> 旧测试结果不代表新实现已通过；仅在取得当前验证证据后勾选步骤。
 
-## 来源与目标
+## 目标、现状与文件
 
-依据[统一 Design M07](../../design.md#context-retrieval)、[C04 / C05](../../design.md#closing-contracts)、[P06–P09](../../design.md#prompt-finalization)及[总 Plan](../../plan.md)。准备两份用途不同的列表，以最多三条已有素材交付当前轮；按需只读 MCP 检索和真实来源反馈，compact 恢复原选择。
+依据[统一 Design M07](../../design.md#context-retrieval)、[C04 / C05](../../design.md#closing-contracts)与[总 Plan](../../plan.md)。MCP 高层采用独立 FastMCP 包，复用 context、筛选快照与来源关联，补新执行 / 框架接入、真实冷启动和 Hook 交付。Modify：`src/distillai/mcp.py`、`context.py`、`startup.py`、产品 dispatcher / hooks / MCP 配置 / Skill 和 P06–P09 文本的实际字段；复用 `tests/test_product_context.py`、`test_product_mcp.py`、`test_product_feedback.py`。候选版本 / 底层 SDK 兼容关系见总 Plan，不混用旧 SDK 同名 FastMCP。
 
-## 文件映射
+## M07-R1：FastMCP 和一个常驻后台
 
-Create：`src/distillai/context.py`、`src/distillai/mcp.py`、`src/distillai/prompts/context.txt`、`selection.txt`、`injection.txt`；`plugins/distillai/skills/distillai/SKILL.md`；`tests/test_product_context.py`、`test_product_mcp.py`、`test_product_feedback.py`。
+- [x] **R1.1 用 FastMCP 的高层工具。** `from fastmcp import FastMCP`，以 `@server.tool` 和现有 Pydantic 参数 / 返回类型登记 query_context / submit_feedback，严格输入校验、schema、结构化结果、标准工具错误和 stdio 会话由库承担，不另写 JSON-RPC / tool schema 管理器。只暴露这两个工具，不用 from_fastapi 自动公开整个管理 API；继续 stdio，不为换库增加 MCP HTTP 服务。底层 mcp.server.MCPServer 生产入口替换后删除，不双轨维护。
+- [x] **R1.1a 复用依赖与异步生命周期。** 用 FastMCP 原有 lifespan / dependencies 管理 HTTPX AsyncClient，连接同一常驻后台，删除同步请求套 asyncio.to_thread；取消清理使用库的取消上下文和 AnyIO shield，只向同 invocation 发 cancel。MCP stdout 只协议，Loguru 诊断到文件 / stderr；产品项目解释器启动，不往 PM 装 FastMCP。框架取消工具不代表父进程里的业务任务已停，仍等 Runtime / Job 确认。
+- [ ] **R1.2 闭合冷启动。** 与 M01 共用已有启动锁 / 实例身份检查，在真实 Desktop SessionStart / MCP 生命周期中测试后台不存在时的启动和等待。Windows breakaway 被限制时保留明确错误和先 Serve 的事实；不增加系统服务 / 计划任务 / 父进程伪装。真实冷启动和 stdio 退出后后台存活都取得证据才完成此项。
+- [ ] **R1.3 查询和取消复用业务契约。** 明确 ID / 名称复用 M04，不调用模型；自然语言沿现有只读 AIAgent，先子图 / 两列表后全图。实际读取审计经 M01 通道调用原函数，结果只能引用已读固定版本；不开 Shell / 编辑 / 外部搜索。普通名额排队，不抢占运行维护；每次工具调用内部 UUID 绑定唯一取消，只停对应任务树，停完才回收名额。SDK 取消 / 平台超时 / 无匹配分别返回。
+- [ ] **R1.4 用 FastMCP Client 测试。** 复用 `async with fastmcp.Client(server)` 的内存连接，list_tools / call_tool 验两工具 schema、严格参数、返回字段、错误、反馈幂等和取消绑定；不自写 session / stdio 收发 fixture。传输组另用 FastMCP 的 PythonStdioTransport 与实际子进程测连接 / 退出 / 取消，记录与 Codex Desktop 的实际工具全名和行为。底层官方 SDK 客户端只保留必要互操作检查，内存测试不能代替真实 stdio / G2。
 
-Modify：`runtime.py` 登记准备 / 查询 / 筛选和取消，`tools.py` 只读快照工具，`server.py` 业务桥接，`plugins/distillai/hooks/dispatch.py` / `hooks.json` 启动与上下文。MCP SDK 版本沿 M01 G1 固定，不手写协议。
+## M07-R2：准备、筛选与 compact
 
-## Task 1：子图、两列表与刷新
+- [x] **R2.1 复跑准备和候选规则。** 开放首次更新必准备，后每 3 次有效新增材料更新准备；M04 / M05 直接依赖变化立即合并待办、不加材料计数。候选稳定 ID / revision，只有名称连接进图，正文沿 refs；等待重分析 / 版本失效先排除，当前 M05 + 新 M07 完成后才恢复新选材。
+- [x] **R2.2 复跑直连筛选。** P07 只取固定已有列表 / 当前问题 / 必要背景，无工具、独立执行名额；返回 0–3 个合法唯一 ID，提交前逐项核对候选 revision / 正文 / 条件 / refs。变化只排除该条，不临时检索或新造候选。未准备 / 无候选空返回不调用模型。
+- [ ] **R2.3 完成真实 Hook 输出。** UserPromptSubmit 先登记 M03 开始再等待筛选，实际用 P09-B / additionalContext 输出；失败脱敏诊断后继续原问题，不把纯采集 `{}` 分支套到交付分支。记录写出失败、新轮迟到结果和无候选，不伪造平台确认。
+- [ ] **R2.4 验证两次 compact。** SessionStart 根据真实 startup / resume / clear / compact 字段恢复原关联；compact 读取本轮已保存且确已写出的素材文字 / 版本，最多三条，不重筛、不计新生成、不因普通重复抑制跳过，不新建 episode。平台是否实际进入上下文、助手采用和用户表现分开记录。
 
-- [x] **Step 1：写刷新 / 依赖矩阵。** 新开放 episode 首次成功保存准备；第三次新增材料成功更新刷新；重复交付 / 重写不计更新。M04 / M05 直接依赖变化立即登记，不等周期、不增加材料次数；尚未运行准备合并，运行准备固定输入且新变化另排。
-- [x] **Step 2：实现上下文载荷。** `contexts/<session_key>.json` 保存 episode_ref、准备 refs、名称 / 连接子图与两列表；候选含稳定 id / revision、record_refs、text、conditions、rationale，MCP 项引用摘要 / 来源。实质变更增加 revision，不因换排序重建身份或清交付历史；不复制权威详情到图。
-- [x] **Step 3：发布 P06 prepare 模式。** P01 + P06 + mode=prepare；查实际完整图 / 详情，分别按问题背景价值与素材连接价值定性排序，不凑列表或生成用户已知状态。使用维护工具 / 副本，结果 `context_ref,reason` 由程序校验 / 提交补版本。
-- [x] **Step 4：实现依赖失效。** 原记录 / 来源变更标待刷新；等待重新分析的判断及依赖候选不能新选材，只有当前修订 M05 成功且 M07 准备成功才恢复使用。历史选择快照保留，未知 / 候选身份不转成事实。
-- [x] **Step 5：运行上下文组。**
+## M07-R3：来源反馈与工具说明
 
-```powershell
-python -m unittest discover -s tests -p 'test_product_context.py' -v
-```
+- [x] **R3.1 复跑来源关联。** 相同 client_request_id 同内容复用、改内容拒绝；缺原文先待关联，Stop 后按角色 / 请求边界 / 唯一位置匹配；歧义不靠同字符串硬合并，不伪造 user_submission。取得真实 source_refs 后同源观察交 M05 复用，跨来源文本相同保持独立。
+- [ ] **R3.2 实测插件配置与提示。** 固定真实命令解释器、PLUGIN_ROOT、MCP 注册全名和 Hook 返回结构；P08 / P09 使用实际工具名，M02 自身 MCP 排除同步。Skill 不每轮强制查询 / 出题，不引入 MCP prompt 资源，不指望 `${config.xxx}` 自动替换。
+- [ ] **R3.3 验证自然交互。** 在实际 Desktop 查询 ID / 自然语言、取消一项并保留其他任务、MCP 早到后关联、素材可跳过、用户新表现回到 M05。记录 P06 排序 / 查询资料与 P07 条件判断的人工审阅，原任务仍可继续；工具成功不等于用户理解。
 
-预期：刷新 / 版本 / 状态用例 `OK`；P06 排序语义另人工审阅。
-
-## Task 2：当前轮筛选、交付与 compact
-
-- [x] **Step 1：写筛选输出边界。** 未准备或无候选不调用临时全图检索；结构化选择 ID 必须来自固定列表、唯一、0–3 个。伪造 ID、超量、重复、筛选期间来源变更拒绝对应条目，仍有效条目可以留下；没有适用候选正常空。
-- [x] **Step 2：发布 P07 并使用独立名额。** 只给当前问题 / 必要背景 / 固定候选 / 普通交付历史，不拼 P01 维护步骤、不注册任何工具。模型调用经 M01 计数，筛选最高优先且不等普通任务模型 I/O，不新增产品等待时限。
-- [x] **Step 3：保存当前轮选择快照。** 程序生成 round_key，持久选中文字、RecordRefs / 来源版本、Prompt 版本、原因和实际输出阶段；新 Prompt 新 round_key。普通连续重复按历史提示模型，实质变化 / 明确需要可再用；输出文本不算平台确认、助手采用或用户表现。
-- [ ] **Step 4：实现 Hook / compact 返回。** UserPromptSubmit 在 M03 request_started 后同步筛选，用 P09-B 包装 additionalContext；SessionStart startup / resume / clear 恢复关联和 P09-A，compact 在当前轮续接前读取原选择原文 / 版本，最多三条，无选择只入口。compact 不重筛、不按重复历史过滤、不新建 episode。
-- [ ] **Step 5：实现失败继续回答。** 启动 / 筛选 / 交付失败不带本次未交付素材，保留脱敏诊断继续原任务；没有候选空返回。与纯采集 stdout `{}` 分支区分，不把 Hook 技术超时解释为无匹配或业务收尾。
-- [x] **Step 6：复跑上下文组。** 新增“二次 compact 同一选择且筛选调用数不增”“旧选择历史版本仍可恢复”“筛选期间两候选一条失效仅交有效条”“候选变更不删交付历史”的契约测试；只断言版本 / 身份 / 内容快照，不固化 Prompt 全文措辞。
-
-## Task 3：MCP 查询和反馈关联
-
-- [ ] **Step 1：使用官方 Python SDK 建 stdio 桥接。** 注册服务 `distillai` 和 query_context / submit_feedback，读取 / 启动同一后台，stdio 退出不关闭常驻实例；stdout 只协议消息，诊断 stderr。用 SDK 客户端验证初始化、工具 schema 和调用错误，不手写 JSON-RPC。
-- [x] **Step 2：实现直接查询。** query_context 对明确 ID / 名称查询复用 M04，无模型任务；自然语言选择进入下一步骤。返回固定版本内容、来源、理解 / 假设身份及等待重分析说明。成功空、未知记录、索引未就绪、服务不可用分别映射，不用“无匹配”遮盖错误。
-- [x] **Step 3：发布 P06 query 模式。** 输入固定 query / 已知 refs，只注册 query_records / read_source 和必要记录搜索；不开放编辑、Shell、外部搜索，策略不允许业务文件变更。先子图 / 上下文，资料不足再全图；返回 status / items / source_refs / reason，程序校验实际读取 refs / 版本并组装对应版本正文。模型新编摘要不能替代未读记录，任务 / 历史保存由控制层负责。
-- [x] **Step 4：接入排队、同步返回和取消。** 查询复用普通名额、次于筛选且优先普通待办，不抢占运行维护；工具等待结果。桥接为每次独立工具调用生成内部触发标识，仅同一次调用的重复登记复用任务；不同调用即使查询相同也各有关联任务，使取消所有权唯一，不增加源消息 ID 或公开必填字段。客户端取消 / 平台超时只取消该调用关联的 queued 查询或停止对应 running 进程树，确认停完才复用名额，连接结束仍存原因；不关闭后台、不取消其他任务、不成功空返回。
-- [x] **Step 5：实现反馈幂等和待关联。** submit_feedback 保存 client_request_id / session / 真实表现与帮助 / 目标 refs / 可取得 source_refs，同 ID 重试复用。先于 Stop 时仅待关联；落盘后按角色、范围和上下文核查，唯一可信位置才进入 M05，多位置保持待关联。同来源不同请求由 M05 复用观察；文本相同不等于同源，普通反馈不伪造 user_submission。
-- [x] **Step 6：写并运行 MCP / 反馈组。** 检查 query 模式禁止写业务、实际版本对应、不读记录不返回、SDK 不同错误、运行维护不被查询抢占、排队查询优先下一普通任务、cancel 只停对应查询、两个相同文本的独立调用取消一个不影响另一个、重复反馈与歧义待关联。
+## 验证、测试必要性与依赖
 
 ```powershell
-python -m unittest discover -s tests -p 'test_product_mcp.py' -v
-python -m unittest discover -s tests -p 'test_product_feedback.py' -v
+$env:PYTHONPATH = 'src'
+uv run --locked python -m unittest discover -s tests -p 'test_product_context.py' -v
+uv run --locked python -m unittest discover -s tests -p 'test_product_mcp.py' -v
+uv run --locked python -m unittest discover -s tests -p 'test_product_feedback.py' -v
 ```
 
-预期：`OK`；慢任务 / SDK 客户端取消使用本机合成数据，不需要外部模型。真实平台取消另 Task 4 验证。
+预期各 `OK`；FastMCP 内存 Client、真实 stdio 传输和 Desktop G2 分别记录。永久测试复用来源身份、候选版本、compact 字节快照和取消所有权，不增加仅检查 private helper 的测试。测试仍可用 unittest.IsolatedAsyncioTestCase，不因换库重写所有测试 runner。真实工具名、平台事件、冷启动和 Prompt 语义是一轮实测证据。依赖 M01–M05；M06 外扩结果可后接，不阻塞首次查询。
 
-## Task 4：插件说明与真实 Desktop 联调
+## 2026-10-17 批准与执行
 
-- [ ] **Step 1：发布 P08 / P09。** Skill 使用批准全文与实际工具名，SessionStart 输出服务状态 / session_key / Skill 入口 / 实际注册全名；MCP 工具描述分别 P09-C / D。Prompt 与数据分开，配置由程序读取，不依赖 `${config.xxx}` 自动替换，不新建 MCP prompt 资源。
-- [ ] **Step 2：固定 Desktop 接入配置。** 按当前 Desktop 实测确定插件启用、command 解释器 / PLUGIN_ROOT、MCP stdio 启动及所有事件字段，补产品安装 / 信任 / 停用说明。测试后台未运行时 SessionStart 可启动且不等待 MCP 已连接，多个入口不多实例。
-- [ ] **Step 3：验证真实注入 / compact。** 合成会话取得可观察的最多三素材、条件不适用跳过、无候选空、后台错误继续、当前轮 compact 两次恢复原文字 / 版本；核对实际进入上下文的证据。只写 Hook stdout 不能替代平台交付证据，不要求通用 Agent 每轮采用。
-- [ ] **Step 4：验证真实查询 / 取消。** Desktop 中查询已知 ID / 名称和自然语言；后者先上下文不足再全图。后台维护运行中发 query，观察等待 / 优先次序；客户端取消或平台超时确认仅该 query 停止。记录实际 SDK / Desktop 限制，没有收到取消信号就保留未验证状态。
-- [ ] **Step 5：验证自然反馈链。** 同一真实测试来源经 Hook / MCP 各一次，回查唯一观察、帮助和假设变化；MCP 先到 / 歧义来源各测一次。记录交付、可观察采用、用户接触 / 独立应用的不同身份，中立问题不诱导目标答案。
+用户明确批准本次重写总 Plan 与八模块 Plan，授权完成既有代码重构与计划内新功能。需要用户决策或外部条件的事项集中写入 [待办](../../pending.md)，不阻止独立可实施步骤；保留既有修改，不包含远端写入授权。
 
-## 测试必要性、依赖与状态
+## 2026-10-17 第二批：原生框架、真实 stdio 与浏览器回归
 
-永久组保护刷新触发、版本 / ID / 数量、compact 快照、只读任务、队列 / 取消和来源幂等；现有测试未覆盖。Desktop additionalContext / MCP 连接、实际 tool 名、平台超时、Skill 使用和 Prompt 价值是一次性验收。M01 预算和文件提交不重复测试，只核对 query / prepare / selection 接入模式。
+原生 FastMCP 4.1.0 仅登记两个工具，严格参数与共享引用模型生成 schema；HTTPX AsyncClient 用原生 lifespan，取消经 AnyIO shield 请求原 invocation。内存 Client 四项通过；实际 PythonStdioTransport 独立进程验证列表、ID 查询、严格拒绝、反馈幂等和 stdio 退出后后台存活，零模型请求。该探针发现查询路由方法被同名属性遮蔽，补 HTTP 断言复现后修复。原上下文 / 筛选 / 反馈组及实际新 SDK 筛选 / 查询 / 来源探针通过，真实 Desktop、冷启动、stdio 取消和 Hook / compact 未勾完。证据见 .artifacts/fastmcp-stdio-results.json、direct-hermes-results.json。
 
-依赖 M01–M05；M06 结果可后接，不构成首次查询前置。Task 3 Step 4 的内部调用标识实现已确认的“只取消关联查询”，不改变公开输入或采集身份。2026-10-13 用户授权按当前 Plan 开始实施，本 Plan 已批准；完成状态按 checkbox 与执行记录核对。
+完整证据、收尾测试结果与范围见[总 Plan](../../plan.md)第二批执行记录；本地通过不代替 GitHub CI，未迁移真实数据或执行远端写入。
+
+<a id="historical-execution"></a>
+
+## 重写前的执行记录（历史证据）
+
+以下保留原记录、日期和旧 Task / Step 编号，便于回查。旧完成比例、批准状态、解释器组合及转发探针仅描述当时实现；不作为本稿的执行指令或本轮验证结果。旧计划全文可从 Git 中重写前的版本回查。
 
 ## 2026-10-15：准备、只读查询、筛选与 SDK 桥接
 

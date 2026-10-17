@@ -6,6 +6,10 @@ import os
 from pathlib import Path
 import time
 import threading
+import pywintypes
+import win32api
+import win32file
+import win32job
 
 
 if os.name != "nt":
@@ -21,20 +25,9 @@ def _function(name, result, *arguments):
     return function
 
 
-_create = _function("CreateFileW", w.HANDLE, w.LPCWSTR, w.DWORD, w.DWORD,
-                    w.LPVOID, w.DWORD, w.DWORD, w.HANDLE)
-_close = _function("CloseHandle", w.BOOL, w.HANDLE)
-_read = _function("ReadFile", w.BOOL, w.HANDLE, w.LPVOID, w.DWORD, ctypes.POINTER(w.DWORD), w.LPVOID)
-_write = _function("WriteFile", w.BOOL, w.HANDLE, w.LPCVOID, w.DWORD, ctypes.POINTER(w.DWORD), w.LPVOID)
-_seek = _function("SetFilePointerEx", w.BOOL, w.HANDLE, ctypes.c_longlong, w.LPVOID, w.DWORD)
-_truncate = _function("SetEndOfFile", w.BOOL, w.HANDLE)
-_flush = _function("FlushFileBuffers", w.BOOL, w.HANDLE)
-_set_info = _function("SetFileInformationByHandle", w.BOOL, w.HANDLE, ctypes.c_int, w.LPVOID, w.DWORD)
+# pywin32 time values lose the last FILETIME digit; recovery compares exact 100 ns ticks.
 _set_time = _function("SetFileTime", w.BOOL, w.HANDLE, ctypes.POINTER(w.FILETIME),
                       ctypes.POINTER(w.FILETIME), ctypes.POINTER(w.FILETIME))
-_get_type = _function("GetFileType", w.DWORD, w.HANDLE)
-_final_path = _function("GetFinalPathNameByHandleW", w.DWORD, w.HANDLE, w.LPWSTR, w.DWORD, w.DWORD)
-INVALID = ctypes.c_void_p(-1).value
 
 
 class _Info(ctypes.Structure):
@@ -44,18 +37,11 @@ class _Info(ctypes.Structure):
                 ("links", w.DWORD), ("index_high", w.DWORD), ("index_low", w.DWORD)]
 
 
-class _Stream(ctypes.Structure):
-    _fields_ = [("size", ctypes.c_longlong), ("name", w.WCHAR * 296)]
-
-
 class _Rename(ctypes.Structure):
     _fields_ = [("replace", w.BOOLEAN), ("root", w.HANDLE), ("length", w.DWORD), ("name", w.WCHAR * 1)]
 
 
 _get_info = _function("GetFileInformationByHandle", w.BOOL, w.HANDLE, ctypes.POINTER(_Info))
-_first_stream = _function("FindFirstStreamW", w.HANDLE, w.LPCWSTR, ctypes.c_int, ctypes.POINTER(_Stream), w.DWORD)
-_next_stream = _function("FindNextStreamW", w.BOOL, w.HANDLE, ctypes.POINTER(_Stream))
-_find_close = _function("FindClose", w.BOOL, w.HANDLE)
 nt = ctypes.WinDLL("ntdll", use_last_error=True)
 
 
@@ -99,20 +85,28 @@ def _ticks(value):
     return (value.dwHighDateTime << 32) | value.dwLowDateTime
 
 
+def _win32(function, *args):
+    # pywintypes.error is not OSError; preserve callers' existing failure contract.
+    try:
+        return function(*args)
+    except pywintypes.error as error:
+        raise ctypes.WinError(error.winerror) from None
+
+
 class FileHandle:
     def __init__(self, path, *, writable=False, create=False, open_always=False, delete=False, directory=False, parent=None):
         self.path = Path(os.path.abspath(path))
         access = 0x80000000 | (0x40000000 if writable else 0) | (0x10000 if delete else 0)
         flags = 0x00200000 | (0x02000000 if directory else 0x80)
         if parent is None:
-            self.handle = _create(str(self.path), access, 3 if directory else 1, None,
+            self.handle = _win32(win32file.CreateFile, str(self.path), access, 3 if directory else 1, None,
                                   1 if create else 4 if open_always else 3, flags, None)
         else:
             # Relative native opens bind to the pinned directory object, even if its path changes.
             name = ctypes.create_unicode_buffer(self.path.name)
             size = len(self.path.name.encode("utf-16-le"))
             unicode = _Unicode(size, size + 2, ctypes.cast(name, w.LPWSTR))
-            attributes = _ObjectAttributes(ctypes.sizeof(_ObjectAttributes), parent.handle,
+            attributes = _ObjectAttributes(ctypes.sizeof(_ObjectAttributes), int(parent.handle),
                                            ctypes.pointer(unicode), 0x1040, None, None)
             handle = w.HANDLE()
             status = _IOStatus()
@@ -120,14 +114,12 @@ class FileHandle:
                                  ctypes.byref(status), None, 0x10 if directory else 0x80,
                                  3 if directory else 1, 2 if create else 3 if open_always else 1,
                                  0x200020 | (1 if directory else 0x40), None, 0))
-            self.handle = handle.value
-        if self.handle == INVALID:
-            raise ctypes.WinError(ctypes.get_last_error())
+            self.handle = pywintypes.HANDLE(handle.value)
         try:
             info = self.info()
             if info["attributes"] & 0x400 or bool(info["attributes"] & 0x10) != directory:
                 raise OSError("Reparse points and unexpected file types cannot be published")
-            if _get_type(self.handle) != 1 or (not directory and info["links"] != 1):
+            if _win32(win32file.GetFileType, self.handle) != win32file.FILE_TYPE_DISK or (not directory and info["links"] != 1):
                 raise OSError("Only single-link disk files can be published")
             # Sparse/compressed/encrypted/offline metadata needs a different recovery strategy.
             if not directory and info["attributes"] & ~0xA7:
@@ -146,74 +138,51 @@ class FileHandle:
 
     def close(self):
         if self.handle is not None:
-            _check(_close(self.handle))
+            _win32(self.handle.Close)
             self.handle = None
 
     def info(self):
         info = _Info()
-        _check(_get_info(self.handle, ctypes.byref(info)))
+        _check(_get_info(int(self.handle), ctypes.byref(info)))
         return {"identity": [info.volume, info.index_high, info.index_low],
                 "attributes": info.attributes, "links": info.links,
                 "created": _ticks(info.created), "modified": _ticks(info.modified),
                 "size": (info.size_high << 32) | info.size_low}
 
     def final_path(self):
-        size = _final_path(self.handle, None, 0, 0)
-        _check(size)
-        buffer = ctypes.create_unicode_buffer(size + 1)
-        length = _final_path(self.handle, buffer, len(buffer), 0)
-        _check(length and length < len(buffer))
-        value = buffer.value
+        value = _win32(win32file.GetFinalPathNameByHandle, self.handle, 0)
         if value.startswith("\\\\?\\UNC\\"):
             raise OSError("Publication requires a local drive directory")
         return Path(value.removeprefix("\\\\?\\"))
 
     def check_streams(self):
-        stream = _Stream()
-        search = _first_stream(str(self.path), 0, ctypes.byref(stream), 0)
-        if search == INVALID:
-            error = ctypes.get_last_error()
-            if error == 38:  # Empty files may have no enumerable streams.
-                return
-            raise ctypes.WinError(error)
-        try:
-            while True:
-                if stream.name != "::$DATA":
-                    raise OSError("Alternate data streams cannot be published")
-                if not _next_stream(search, ctypes.byref(stream)):
-                    error = ctypes.get_last_error()
-                    if error != 38:
-                        raise ctypes.WinError(error)
-                    break
-        finally:
-            _check(_find_close(search))
+        streams = _win32(win32file.GetFileInformationByHandleEx, self.handle, win32file.FileStreamInfo)
+        if any(stream["StreamName"] != "::$DATA" for stream in streams):
+            raise OSError("Alternate data streams cannot be published")
 
     def read(self):
-        _check(_seek(self.handle, 0, None, 0))
+        _win32(win32file.SetFilePointer, self.handle, 0, win32file.FILE_BEGIN)
         data = bytearray()
-        buffer = ctypes.create_string_buffer(1024 * 1024)
-        count = w.DWORD()
         while True:
-            _check(_read(self.handle, buffer, len(buffer), ctypes.byref(count), None))
-            if not count.value:
+            _, chunk = _win32(win32file.ReadFile, self.handle, 1024 * 1024)
+            if not chunk:
                 return bytes(data)
-            data.extend(buffer.raw[:count.value])
+            data.extend(chunk)
 
     def write(self, data, *, offset=0):
-        _check(_seek(self.handle, offset, None, 0))
+        _win32(win32file.SetFilePointer, self.handle, offset, win32file.FILE_BEGIN)
         for offset in range(0, len(data), 1024 * 1024):
             chunk = data[offset:offset + 1024 * 1024]
-            count = w.DWORD()
-            _check(_write(self.handle, chunk, len(chunk), ctypes.byref(count), None))
-            if count.value != len(chunk):
+            _, count = _win32(win32file.WriteFile, self.handle, chunk)
+            if count != len(chunk):
                 raise OSError("Incomplete publication write")
-        _check(_truncate(self.handle))
-        _check(_flush(self.handle))
+        _win32(win32file.SetEndOfFile, self.handle)
+        _win32(win32file.FlushFileBuffers, self.handle)
 
     def restore_modified(self, ticks):
         timestamp = w.FILETIME(ticks & 0xFFFFFFFF, ticks >> 32)
-        _check(_set_time(self.handle, None, None, ctypes.byref(timestamp)))
-        _check(_flush(self.handle))
+        _check(_set_time(int(self.handle), None, None, ctypes.byref(timestamp)))
+        _win32(win32file.FlushFileBuffers, self.handle)
 
     def rename(self, destination):
         destination = Path(os.path.abspath(destination))
@@ -221,20 +190,20 @@ class FileHandle:
             self._rename_relative(destination, parent)
 
     def _rename_relative(self, destination, parent):
+        # SetFileInformationByHandle rejects a non-null RootDirectory here (WinError 87).
         name = destination.name.encode("utf-16-le")
         offset = _Rename.name.offset
         info = ctypes.create_string_buffer(max(ctypes.sizeof(_Rename), offset + len(name) + 2))
         header = _Rename.from_buffer(info)
-        header.root = parent.handle
+        header.root = int(parent.handle)
         header.length = len(name)
         ctypes.memmove(ctypes.addressof(info) + offset, name, len(name))
         status = _IOStatus()
-        _check_nt(_nt_set(self.handle, ctypes.byref(status), info, len(info), 10))
+        _check_nt(_nt_set(int(self.handle), ctypes.byref(status), info, len(info), 10))
         self.path = Path(os.path.abspath(destination))
 
     def remove(self):
-        dispose = w.BOOLEAN(True)
-        _check(_set_info(self.handle, 4, ctypes.byref(dispose), ctypes.sizeof(dispose)))
+        _win32(win32file.SetFileInformationByHandle, self.handle, win32file.FileDispositionInfo, True)
 
 
 @contextmanager
@@ -255,30 +224,6 @@ def canonical_directory(path):
         return directory.final_path()
 
 
-class _BasicLimits(ctypes.Structure):
-    _fields_ = [("process_time", ctypes.c_int64), ("job_time", ctypes.c_int64),
-                ("flags", w.DWORD), ("min_working_set", ctypes.c_size_t),
-                ("max_working_set", ctypes.c_size_t), ("process_limit", w.DWORD),
-                ("affinity", ctypes.c_size_t), ("priority", w.DWORD), ("scheduling", w.DWORD)]
-
-
-class _ExtendedLimits(ctypes.Structure):
-    _fields_ = [("basic", _BasicLimits), ("io", ctypes.c_uint64 * 6),
-                ("process_memory", ctypes.c_size_t), ("job_memory", ctypes.c_size_t),
-                ("peak_process_memory", ctypes.c_size_t), ("peak_job_memory", ctypes.c_size_t)]
-
-
-class _Accounting(ctypes.Structure):
-    _fields_ = [("times", ctypes.c_int64 * 4), ("faults", w.DWORD), ("total", w.DWORD),
-                ("active", w.DWORD), ("terminated", w.DWORD)]
-
-
-_create_job = _function("CreateJobObjectW", w.HANDLE, w.LPVOID, w.LPCWSTR)
-_set_job = _function("SetInformationJobObject", w.BOOL, w.HANDLE, ctypes.c_int, w.LPVOID, w.DWORD)
-_assign_job = _function("AssignProcessToJobObject", w.BOOL, w.HANDLE, w.HANDLE)
-_terminate_job = _function("TerminateJobObject", w.BOOL, w.HANDLE, w.UINT)
-_query_job = _function("QueryInformationJobObject", w.BOOL, w.HANDLE, ctypes.c_int, w.LPVOID, w.DWORD, w.LPVOID)
-_open_process = _function("OpenProcess", w.HANDLE, w.DWORD, w.BOOL, w.DWORD)
 _resume_process = nt.NtResumeProcess
 _resume_process.restype = ctypes.c_long
 _resume_process.argtypes = [w.HANDLE]
@@ -288,14 +233,13 @@ class ProcessJob:
     """Assign a suspended child before it can spawn; stop the inherited tree."""
     def __init__(self):
         self._lock = threading.RLock()
-        self.handle = _create_job(None, None)
-        _check(self.handle)
-        limits = _ExtendedLimits()
-        limits.basic.flags = 0x2000
+        self.handle = _win32(win32job.CreateJobObject, None, "")
+        limits = _win32(win32job.QueryInformationJobObject, self.handle, win32job.JobObjectExtendedLimitInformation)
+        limits["BasicLimitInformation"]["LimitFlags"] = win32job.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
         try:
-            _check(_set_job(self.handle, 9, ctypes.byref(limits), ctypes.sizeof(limits)))
+            _win32(win32job.SetInformationJobObject, self.handle, win32job.JobObjectExtendedLimitInformation, limits)
         except BaseException:
-            _close(self.handle)
+            _win32(self.handle.Close)
             self.handle = None
             raise
 
@@ -307,32 +251,29 @@ class ProcessJob:
 
     def assign(self, pid):
         with self._lock:
-            process = _open_process(0x101101, False, pid)
-            _check(process)
+            process = _win32(win32api.OpenProcess, 0x101101, False, pid)
             try:
-                _check(_assign_job(self.handle, process))
+                _win32(win32job.AssignProcessToJobObject, self.handle, process)
             finally:
-                _check(_close(process))
+                _win32(process.Close)
 
     def resume(self, pid):
         with self._lock:
-            process = _open_process(0x800, False, pid)
-            _check(process)
+            process = _win32(win32api.OpenProcess, 0x800, False, pid)
             try:
-                _check_nt(_resume_process(process))
+                _check_nt(_resume_process(int(process)))
             finally:
-                _check(_close(process))
+                _win32(process.Close)
 
     def stop(self, timeout=5):
         with self._lock:
             if self.handle is None:
                 return
-            _check(_terminate_job(self.handle, 1))
+            _win32(win32job.TerminateJobObject, self.handle, 1)
             deadline = time.monotonic() + timeout
             while True:
-                accounting = _Accounting()
-                _check(_query_job(self.handle, 1, ctypes.byref(accounting), ctypes.sizeof(accounting), None))
-                if not accounting.active:
+                accounting = _win32(win32job.QueryInformationJobObject, self.handle, win32job.JobObjectBasicAccountingInformation)
+                if not accounting["ActiveProcesses"]:
                     return
                 if time.monotonic() >= deadline:
                     raise TimeoutError("Task process tree has not stopped; keep its execution slot reserved")
@@ -342,5 +283,5 @@ class ProcessJob:
         with self._lock:
             if self.handle is not None:
                 self.stop()
-                _check(_close(self.handle))
+                _win32(self.handle.Close)
                 self.handle = None

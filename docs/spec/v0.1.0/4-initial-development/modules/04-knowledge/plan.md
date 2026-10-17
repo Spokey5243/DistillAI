@@ -7,71 +7,66 @@ status: approved
 decision_mode: user-approved
 ---
 
-# M04：知识、关系与名称图 Implementation Plan
+# M04：复用 NetworkX，保留知识与版本契约 Implementation Plan
 
-> 执行者使用 `executing-plans`，按本模块 checkbox 推进；默认主 Agent 实施。
+> 2026-10-17 用户批准重写稿并授权实施；按 `executing-plans` 由主 Agent 持续执行。
+> 旧测试结果不代表新实现已通过；仅在取得当前验证证据后勾选步骤。
 
-## 来源与目标
+## 目标、复用与文件
 
-依据[统一 Design M04](../../design.md#knowledge-contracts)及[总 Plan](../../plan.md)。维护独立知识 / 关系 JSON、可定位的实际来源和稳定 ID；通过确定性名称图提供精确 / 详情 / 一跳查询，不把用户判断放图属性。
+依据[统一 Design M04](../../design.md#cognitive-map-model)及[总 Plan](../../plan.md)。JSON 详情和来源仍为权威，图为名称 / 连接索引；将手写邻接结构交给 NetworkX，继续复用现有知识校验、维护和查询业务方法。
 
-## 文件映射
+Modify：`src/distillai/knowledge.py`、`tools.py` 的图快照读取适配；`pyproject.toml` / `uv.lock` 由 M01 统一登记 NetworkX 依赖。复用 `tests/test_product_graph.py` / `test_product_knowledge.py`。不增加图服务、图数据库、向量检索或 Graphify；本稿没有执行 `/graphify`。
 
-Create：`src/distillai/knowledge.py`、`src/distillai/prompts/knowledge.txt`、`tests/test_product_knowledge.py`、`tests/test_product_graph.py`。
+## M04-R1：使用现成有向多关系图
 
-Modify：`storage.py` 登记字段校验，`tools.py` 注册 `query_records` 并复用 M02 的 `read_source`，`runtime.py` 登记索引补建和后继任务，`server.py` 业务查询 / 编辑路由。沿用两个 example 的组织，但重新生成可真实解析的合成 fixture。
+- [x] **R1.1 保留公开查询测试。** 先跑已有图组，覆盖 trim / casefold 名称、别名多匹配、同端点多关系、in / out / both、对称关系、inactive、改名 ID 不变、未知记录和 index_not_ready。图类更换不修改结果 schema 或改成模糊查询。
+- [x] **R1.2 替换邻接维护。** `KnowledgeIndex.rebuild` 使用 `networkx.MultiDiGraph`，知识 ID 为 node，关系 ID 为 edge key；只放名称、版本和端点等现有索引字段。名称 / 别名精确字典继续用于领域匹配；不再维护第二套 in / out sets 或复制 NetworkX 遍历代码。
+- [x] **R1.3 保留方向语义。** 非对称关系只存 source→target；对称关系可在内存图用相同关系 ID 作双向索引，权威 JSON 仍一条。读取 in / out 边后按关系 ID 去重、邻居按知识 ID 去重并排序，自环也只返回一份关系；不同关系 ID 不能因端点相同合并。删除手写图结构后检查所有上下文消费者。
+- [x] **R1.4 重建原子切换。** 从已提交详情集合构建临时图，完整成功再切换；失败明确索引未就绪，详情 / 历史版本仍能读取，原补建待办只补索引、不重跑模型 / 业务提交。不借机改变文件格式或业务记录 ID。
+- [x] **R1.5 对照结果。** 用现有合成 fixture 比较替换前后公开查询结果，再扩展原组中遗漏的对称自环 / 多边重复路径（只有现有组遗漏才新增）。一次性记录清空索引后重建和代表规模耗时，不做固定节点数 / 代码行数永久断言。
 
-## Task 1：详情、身份、来源与字段归属
+## M04-R2：复用三类维护与实际语义审阅
 
-- [x] **Step 1：写最小有效 / 无效记录用例。** 知识至少 id / name、content.summary / source_refs；关系至少身份 / 端点 / kind / relation_type / direction_semantics、content.statement / source_refs。构造 ID / 文件不一致、引用缺失、主名冲突、别名多匹配和跨模块字段写入；expected_version 冲突由 M01 拒绝。
-- [x] **Step 2：实现对变更后集合的校验。** 检查端点和显式关系属于该知识点，新增同批对象可以相互引用；来源通过 M02 / 外部版本 / 用户提交来源读取。不固定示例中的假设状态或关系类型枚举，relation_type 非空；record_status 省略 active、inactive 留历史。
-- [x] **Step 3：实现 M04 字段权限。** M04 可维护内容、名称 / 别名、端点 / 关系核查、内容 provenance / changes；保留 M05 观察 / 假设 / cognition 及其 provenance。直接用户编辑只改 changes 指定字段，原因写历史；认知纠错交 M05。
-- [x] **Step 4：建立维护输入 / 输出适配。** episode 使用固定 refs 与关闭 / 修订原因，外扩用 expansions refs，用户编辑用 record_kind / record_id / expected_version / changes / reason。结果 `knowledge_refs, relation_refs, reason` 只列真实差异，版本在提交后补齐，空列表正常成功。
-- [x] **Step 5：运行详情组。**
+- [x] **R2.1 复跑详情与字段权限。** 知识 / 关系 ID、来源、端点、同批引用、主名冲突、版本冲突沿原校验；M04 不覆盖 M05 的 observations / hypotheses / cognition。用户编辑只修改 changes 指定字段并留提交来源 / 原因，原材料只读。
+- [ ] **R2.2 复跑真实执行链。** episode、外扩、用户编辑继续用原适配 / P03 / Hermes 文件工具；`query_records` 沿图和详情 Python 方法，`read_source` 沿来源解析，不把数据查询变成第二个 Agent。空结果成功仍交 M05 原 episode；提交后补图 / 直接依赖的 M07 准备沿现有登记。
+- [ ] **R2.3 审阅语义与恢复。** 获准实际模型验证同义归一、同名异义、来源冲突、用户联想未核查、修订后丢部分支持、inactive / 空结果。另复跑图构建失败和同期编辑，确认可读已提交详情、补建不重算、不覆盖编辑。保留原文版本 / 理由，不能把格式校验通过当语义正确。
 
-```powershell
-python -m unittest discover -s tests -p 'test_product_knowledge.py' -v
-```
-
-预期：`OK`；跨模块写入或失效来源拒绝，保留用户当前版本。
-
-## Task 2：标准库名称图与公开查询
-
-- [x] **Step 1：写查询矩阵。** 按以下返回契约断言，测试数据在临时目录生成而非复用 example 的虚构队列。
-
-| 场景 | 预期 |
-| --- | --- |
-| 名称 / 别名 trim、忽略大小写 | 全部 `{id,name,version}` 匹配，别名歧义返回多个；无匹配空 |
-| 详情已知 / 未知 ID | `{record,version}` / 明确未找到 |
-| 相同端点两条独立关系 | 两条关系均保留，邻居去重 |
-| 先备 / 因果 / 类比 | 方向按 Design，类比参照 → 尝试理解 |
-| 对称一条关系 | in / out 两端均可发现，保留存储端点 |
-| inactive、改名、无邻居 | inactive 不进有效图，改名 ID 不变，无邻居空 |
-| 重建失败 | 一跳明确索引未就绪，详情仍可读 |
-
-- [x] **Step 2：实现确定性索引。** 用标准库字典保存主名 / 别名映射、节点名、关系名及两端；关系 ID 为连接身份，入 / 出邻接支持有向多关系。正文、来源、理解不进入属性；不引入图数据库 / Graphify / TS Graphology。
-- [x] **Step 3：实现查询返回。** 精确匹配不做模糊 / 向量召回；一跳 direction 默认 both，邻居去重、关系附 refs / 两端、按 ID 排序，默认不截断。读取已提交快照，绑定返回内容的版本，不能用当前详情替换历史引用。
-- [x] **Step 4：实现全量重建 / 补建。** 启动和知识 / 关系提交后从已提交集合构建新索引，完成才切换，期间不暴露半成品；失败保留提交和补建待办。模型任务不因索引失败重跑，旧图不冒充最新；实际规模慢再优化。
-- [x] **Step 5：运行图组。**
+## 验证与依赖
 
 ```powershell
-python -m unittest discover -s tests -p 'test_product_graph.py' -v
+$env:PYTHONPATH = 'src'
+uv run --locked python -m unittest discover -s tests -p 'test_product_graph.py' -v
+uv run --locked python -m unittest discover -s tests -p 'test_product_knowledge.py' -v
 ```
 
-预期：`OK`；清除派生索引后重建仍得到相同稳定查询结果。
+预期各 `OK`；本轮未执行这些命令。永久组保护结果与数据关系，不断言 NetworkX 私有结构。依赖 M01 项目环境 / SDK 接入、M02 来源与 M03 固定 episode；M06 / M07 共享同一图入口。引入 NetworkX 的理由是删除已有手写多边 / 方向维护，不能为了依赖而新增图算法。
 
-## Task 3：AIAgent 内容维护与后继
+## 2026-10-17 批准与执行
 
-- [x] **Step 1：发布 P03。** P01 + P03 + 固定输入 / 最小已有记录，注册快照 query_records / read_source，Agent 按需读取原文并直接编辑副本；会话提取不注册外部搜索，不从常识补未讨论知识。
-- [ ] **Step 2：接入三类维护和语义审阅。** 合成场景覆盖同义归一、同名异义、来源冲突、用户联想未核查、修订后失去部分支持、inactive 与空结果。核对实际出处 / 条件 / 角色；事实 / 同义由 Agent 判断，程序不以关键词机械判成立。
-- [x] **Step 3：发布后触发依赖。** episode 分析成功后交 M05 原 episode / 版本 / 来源及维护结果，包括空；M04 相关详情变更为直接依赖它的开放 episode 登记 M07 准备，不等材料周期，也不加材料更新计数。用户编辑和外扩结果复用相同提交 / 图补建入口。
-- [x] **Step 4：验证编辑和重建恢复。** 故意制造索引失败后读取已提交详情，再补建；核对仅补索引，不新增模型调用和重复业务版本。同期用户编辑返回冲突而非被模型覆盖。
+用户明确批准本次重写总 Plan 与八模块 Plan，授权完成既有代码重构与计划内新功能。需要用户决策或外部条件的事项集中写入 [待办](../../pending.md)，不阻止独立可实施步骤；保留既有修改，不包含远端写入授权。
 
-## 测试必要性、依赖与状态
+## 2026-10-17 第一批重构证据
 
-永久组保护来源 / 身份 / 端点、字段归属、有向多关系、精确查询与索引就绪错误；M01 已测发布恢复，不重复私有存储步骤。语义归一、事实核查、规模性能与模板字段布局做一次性验证，不锁定节点 / 示例数量。
+项目 uv 环境完成锁定安装，PM Python 3.14.7 / 固定 Hermes SHA 的 AIAgent 导入检查退出 0；产品环境与任务环境已拆开。FastAPI / Uvicorn 接管 HTTP，显式路由复用原业务；API / Web 以官方 TestClient 和 dependency_overrides 运行。旧 Handler、模型代理、HTTP 程序工具入口及任务 proxy token 已删除；请求历史脱敏转到执行适配。
 
-依赖 M01 + M02 + M03；M05 / M07 交接在本模块验证。标准库图是最小实施建议，满足既有契约才采用，不新增业务规则。2026-10-13 用户授权按当前 Plan 开始实施，本 Plan 已批准；完成状态按 checkbox 与执行记录核对。
+SQLite 已接管任务、去重键 / 别名、依赖、attempt / 次数、提交清单和配置指针。原存储崩溃 / 冲突测试改走数据库；真实写锁超时测试验证未发送模型、停树可结束、业务不可读、重启恢复。离线迁移工具通过合成副本的完整备份、重复核验、预算保留、零新写入回退和新增 Hook 材料后拒绝回退；没有迁移真实数据。修复源读取中新建 Store 重入文件锁的死锁，现有纠错组复跑通过。NetworkX 替换手写邻接；Portalocker / pathvalidate / boltons 替换普通锁、路径词法和单文件保存，Loguru 记录白名单采集诊断。
+
+TaskPipe 采用标准库认证 AF_PIPE / send_bytes / recv_bytes；阻塞 accept / 认证由归任务 Job 的通信进程持有，公开 Process 终止 / join 提供有界回收，不遗弃等待线程。连接前、认证未完成、错误密钥、断开和正常往返已在实际 Windows 通过；跨 PM 主调用与父进程程序工具通过。实际 AIAgent 新探针七场景通过：screening 1、query 2、source 2、文件 / Shell 维护 3、503 恢复 3、第 16 次有效完成 16、第 17 次拒发 16。发现 SDK 将任意发送钩子异常包成连接错误而重试；窄 HTTPX send 适配在额度拒绝时返回本地 400，不发送请求，重跑通过。模型请求编码 / TLS / SSE / 解析 / 模型循环仍由原 SDK 执行。
+
+当前完整产品组 178 tests / OK（39.739s）；Ruff、uv lock --check --offline、git diff --check 退出 0。新增 SDK 组 4 项与 IPC 组 3 项，旧 HTTP 代理用例移至新 SDK 契约覆盖；没有为删除名称写断言。证据在 .artifacts/after-direct-all.log、direct-hermes-probe.log、direct-hermes-results.json 和 probe_state_migration.py。尚未完成全部 M01 / G1：模型参数探针、父进程死亡 / 大消息等完整 IPC 窗口、剩余通用能力、真实模型与 Desktop / 搜索新组合仍需后续证据。没有 Commit / Push 或远端写入。
+
+## 2026-10-17 恢复后第三批：Windows、管道与到期恢复
+
+补原图组遗漏的对称自环与双向多边组合，按稳定关系 ID 返回一次，方向 / 端点与邻居去重不变，图组 5 项通过。一次性 500 知识点 / 1000 关系与 HEAD 旧实现比较 90 组公开邻接查询及精确名 / 别名，新实例重建一致；旧 / NetworkX 温重建耗时 1.7220s / 1.6981s，仅记录规模，不据此声称显著性能提升。
+
+详情 / 来源 / 同批端点 / 主名 / 版本冲突、M04 指定字段编辑和 M05 字段保留沿现有组复跑通过。完整产品 192 项通过，实际 AIAgent 文件 / Shell 维护随新 Windows 绑定再次通过；完整语义与 episode 真实执行链仍有未验范围。证据 .artifacts/third-graph-results.json，详见[总 Plan](../../plan.md)第三批。
+
+<a id="historical-execution"></a>
+
+## 重写前的执行记录（历史证据）
+
+以下保留原记录、日期和旧 Task / Step 编号，便于回查。旧完成比例、批准状态、解释器组合及转发探针仅描述当时实现；不作为本稿的执行指令或本轮验证结果。旧计划全文可从 Git 中重写前的版本回查。
 
 ## 执行记录
 

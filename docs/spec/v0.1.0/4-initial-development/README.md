@@ -1,6 +1,12 @@
 # 初版设计与开发
 
+2026-10-17，用户已批准重写总 Plan 与八模块 Plan，统一 Design 修订 3 已同步；当前持续实施重构与新功能。Goal 与半小时续接检查已启用，需要用户决策的事项写入 pending.md。下方此前草案状态与旧完成比例保留为历史，当前以 Plan 的批准记录和执行证据为准。
+
 关联 [Issue #4](https://github.com/Spokey5243/DistillAI/issues/4)，分支 `codex/4-initial-development`，采用 Exploratory 流程。
+
+2026-10-16 当前入口：[重写后的总 Plan](plan.md)与八模块 Plan 均为 `draft`，取代旧 140 步及 R01 的继续执行安排。新稿明确复用 Hermes / FastAPI / Uvicorn / HTTPX / MCP / NetworkX、移除模型 HTTP 代理，旧代码与执行证据保留；具体 Design 差异写在总 Plan，尚未补造批准或实施。下方按日期保留的进度仅是重写前历史，不作为继续代码实施的授权。
+
+同日用户同意加入 SQLite、Playwright、Ruff：M01-R6 规划控制状态事务、离线迁移与恢复，M08-R3 规划浏览器行为回归，M01-R3 维护开发依赖与 Ruff 检查。原始材料 / 领域内容继续保留文件，SQLite 具体权威划分随新稿审阅；这里只记录选型和计划，没有安装依赖或执行数据迁移。
 
 2026-10-10，用户要求将八模块 Design 合并为一份，并明确 Design 与 Discussion 冲突时以 Design 为主。当前设计维护入口为 [统一 Design](design.md)。M01–M08 合并前版本均已批准，原文保留为来源快照；合并新增的交接、技术提案与 Prompt 文本保持 `draft`，不撤销已有批准。
 
@@ -36,14 +42,14 @@ grill 第四轮已确认：当前轮注入最高优先、MCP 只读检索其次�
 
 | 模块 | 当前 Design | 合并来源快照 | Plan |
 | --- | --- | --- | --- |
-| M01 | [后台运行、配置与持久化](design.md#runtime-contracts) | [原 Design](modules/01-runtime/design.md)、[技术方案](modules/01-runtime/technical-proposal.md) | [已批准，执行中](modules/01-runtime/plan.md) |
-| M02 | [Codex 采集与材料交付](design.md#data-capture) | [原 Design](modules/02-capture/design.md) | [已批准](modules/02-capture/plan.md) |
-| M03 | [episode 构建与维护](design.md#episode-model) | [原 Design](modules/03-episode/design.md) | [已批准](modules/03-episode/plan.md) |
-| M04 | [知识点、关系与图索引](design.md#cognitive-map-model) | [原 Design](modules/04-knowledge/design.md) | [已批准](modules/04-knowledge/plan.md) |
-| M05 | [用户理解估计与反馈](design.md#cognition-decisions) | [原 Design](modules/05-cognition/design.md) | [已批准](modules/05-cognition/plan.md) |
-| M06 | [外部搜索与知识扩充](design.md#knowledge-expansion) | [原 Design](modules/06-expansion/design.md) | [已批准](modules/06-expansion/plan.md) |
-| M07 | [检索、注入与 MCP 接入](design.md#context-retrieval) | [原 Design](modules/07-context/design.md) | [已批准](modules/07-context/plan.md) |
-| M08 | [本地 Web、配置维护与在线编辑](design.md#local-web-console) | [原 Design](modules/08-web/design.md) | [已实施](modules/08-web/plan.md) |
+| M01 | [后台运行、配置与持久化](design.md#runtime-contracts) | [原 Design](modules/01-runtime/design.md)、[技术方案](modules/01-runtime/technical-proposal.md) | [重写草案](modules/01-runtime/plan.md) |
+| M02 | [Codex 采集与材料交付](design.md#data-capture) | [原 Design](modules/02-capture/design.md) | [重写草案](modules/02-capture/plan.md) |
+| M03 | [episode 构建与维护](design.md#episode-model) | [原 Design](modules/03-episode/design.md) | [重写草案](modules/03-episode/plan.md) |
+| M04 | [知识点、关系与图索引](design.md#cognitive-map-model) | [原 Design](modules/04-knowledge/design.md) | [重写草案](modules/04-knowledge/plan.md) |
+| M05 | [用户理解估计与反馈](design.md#cognition-decisions) | [原 Design](modules/05-cognition/design.md) | [重写草案](modules/05-cognition/plan.md) |
+| M06 | [外部搜索与知识扩充](design.md#knowledge-expansion) | [原 Design](modules/06-expansion/design.md) | [重写草案](modules/06-expansion/plan.md) |
+| M07 | [检索、注入与 MCP 接入](design.md#context-retrieval) | [原 Design](modules/07-context/design.md) | [重写草案](modules/07-context/plan.md) |
+| M08 | [本地 Web、配置维护与在线编辑](design.md#local-web-console) | [原 Design](modules/08-web/design.md) | [重写草案](modules/08-web/plan.md) |
 
 ## 依赖与推进顺序
 

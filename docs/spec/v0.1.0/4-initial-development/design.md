@@ -5,12 +5,20 @@ branch: codex/4-initial-development
 workflow: exploratory
 status: approved
 decision_mode: user-approved
-material_revision: 2
+material_revision: 3
 ---
 
 # DistillAI 初版统一 Design
 
 ## 工作状态与阅读入口
+
+2026-10-17，用户批准重写总 Plan 与 M01–M08，授权完成代码重构和计划内新功能。当前基线为修订 3：Hermes SDK 直连模型，发送前经父进程持久预算确认；任务私有模型 / 搜索配置经认证管道交到当前任务进程内存，不进入 Prompt、任务输入、日志或历史。FastAPI / Uvicorn 承载本机业务 API；SQLite 仅保存运行控制状态，内容文件与原始队列保留。具体复用与迁移边界以已批准总 Plan / M01-R6 为准；OS 写隔离继续延期。需用户决策事项写入 pending.md，其余已批准步骤持续实施；远端写入仍需对应授权。下方 2026-10-16 的草案状态仅保留为历史。
+
+2026-10-16 依赖审查增补：用户同意将 SQLite、Playwright、Ruff 加入重写 Plan。三项选型已确认；[总 Plan 的具体提案](plan.md#sqliteplaywright-与-ruff-的本轮增补)将任务 / 额度 / 任务幂等键 / 提交清单 / 配置版本指针交给 SQLite，内容与原始材料保持文件，M01-R6 给出迁移 / 回退，M08-R3 增加浏览器行为测试，Ruff 进入开发检查。本段标记对下方“不引入数据库”旧约束的拟修订，不把具体数据边界或迁移草案补记成已批准基线。Plan 保持 draft，material_revision 暂保持 2；整稿审阅时同步正文与实质修订记录，当前仍只编写文档。
+
+2026-10-16 复用补充：用户指定诊断日志采用 Loguru，要求现成通用能力直接复用，并提出 FastAPI 官方测试工具与 FastMCP。当前 Plan 已明确 TestClient / dependency_overrides、独立 FastMCP 高层与内存 Client、Loguru，以及配置加载 / 定时触发 / 路径校验 / 原子单文件保存的复用安排。这里记录用户要求和 Plan 影响，不将这些尚未实施的具体接入组合伪记为已验；统一 Design 原有业务契约及草案批准边界不变。
+
+2026-10-16，用户要求先重写 Plan，纠正不复用依赖和额外 HTTP 转发的问题。[总 Plan](plan.md)与八模块 Plan 已重写为 `draft`；旧执行记录保留为历史。SDK 直连、计数接入、任务私有凭证边界及图依赖的具体提案见总 Plan 的“需要同步的 Design 差异”。本次只同步阅读状态，不把提案补记为已批准 Design，不增加 material_revision，也不继续代码实施；当前已批准技术基线仍为下方修订 2。
 
 2026-10-14，用户明确将 OS 写隔离能力移出初版，后续独立 Issue 再实现。当前基线为修订 1：使用普通独立 Hermes 任务子进程，保留任务副本、业务路径授权、模型计数、进程树停止、冲突校验、程序写回及恢复；不承诺阻止自由 Shell / Python 写入任务目录之外。MXC、受限令牌和为沙箱配套的 stdio 模型转发均停止本轮验证；历史探针结果保留，不再作为当前 G1 的阻塞条件。后续 Issue 尚未创建。
 
@@ -86,7 +94,7 @@ M08 查看配置、episode、知识关系和处理历史，编辑交归属模块
 
 ## M01：共用运行与保存契约
 
-已有批准。后台本地常驻，由一个 worker 登记、合并待办、调度、调用执行层、重试和恢复。2026-10-12，用户确认使用 Hermes Python Library / `AIAgent` 承担执行层，后期本地 LLM 需求保留；此前 Pi / DeepSeek 比较保留为选型依据。初版文件持久化，不引入数据库、ORM、Docker 或额外业务服务。
+已有批准。后台本地常驻，由一个 worker 登记、合并待办、调度、调用执行层、重试和恢复。2026-10-12，用户确认使用 Hermes Python Library / `AIAgent` 承担执行层，后期本地 LLM 需求保留；此前 Pi / DeepSeek 比较保留为选型依据。修订 3 使用标准库 SQLite 保存任务、幂等键 / 别名、依赖、生成 attempts / 额度、提交清单和配置版本指针；原始材料、领域内容、配置历史正文和不可变字节版本保持文件。不引入 ORM、Docker 或额外数据库服务。
 
 2026-10-12，grill 第一轮确认控制层、Hook 和 MCP 均使用 Python。Hermes 任务在独立执行子进程内通过 `AIAgent` API 运行，控制进程管理任务、停止执行进程树、校验、提交和恢复；独立执行进程不意味着启动 Hermes CLI 或额外 Hermes 服务。修订 1 仅保留执行生命周期分离，不实现 OS 写隔离。
 
@@ -147,13 +155,13 @@ running / validating → recovering → failed / cancelled / recovery_conflict
 
 2026-10-13，M01 临时目录实测确认：锁住 junction 指向的目录仍允许删除 junction，不能只锁最终解析目标。带 `FILE_FLAG_OPEN_REPARSE_POINT` 打开 junction 自身并禁止共享删除可阻止该删除；实施需保护 / 校验逐级路径，无法确认时沿既有契约拒绝提交。此为 Agent 闭环的技术事实补充，未改变安全边界；Plan 已记录反例和部分通过范围，完整提交窗口仍待验证。
 
-程序不主动将真实模型密钥写入 Prompt、历史或 Web 返回；任务模型调用经固定转发入口和任务授权计数。入口限制协议 / 模型 / 路由，检查授权、权限与剩余额度，不是任意 URL 代理。保留的自动重试、续推理、修正及内部请求均计数；关闭无任务额度的后台模型活动。当前不提供本机凭证文件的进程读写隔离，也不承诺防止同用户自由命令篡改后台状态；自由联网不表示能统计 Shell 使用其他凭证访问的所有外部模型。
+程序不主动将真实模型密钥写入 Prompt、历史或 Web 返回；任务通过固定版本 Hermes SDK 直连配置 endpoint。SDK 每次发送前经认证管道申请持久额度，并核对任务有效性、固定协议 / 模型 / 路由；删除本机模型 HTTP 转发。保留的自动重试、续推理、修正及内部请求均计数；关闭无任务额度的后台模型活动。当前不提供本机凭证文件的进程读写隔离，也不承诺防止同用户自由命令篡改后台状态；自由联网不表示能统计 Shell 使用其他凭证访问的所有外部模型。
 
 业务工作路径授权收紧立即注销任务授权，停止整个执行进程树，确认停止后恢复 / 清理；未确认停止阻止后续写任务，不只发送框架 abort。扩大授权用于新任务。恢复程序只处理已登记变更，不重新授予旧业务授权。此处是任务取消与程序发布约束，不修改 OS ACL；Job / 进程树停止只验证生命周期，不提供写隔离。
 
 ### 任务副本、版本与恢复
 
-Agent 直接使用文件 / 命令工具修改副本，不要求业务保存工具代写。程序维护 tasks、versions、commits、workspaces，原材料沿 M02 读取；正文详情使用 JSON。版本按不可变字节 SHA-256 定位，任务状态在程序锁内经同目录临时写、同步与替换保存；JSONL 仅用于追加事件。
+Agent 直接使用文件 / 命令工具修改副本，不要求业务保存工具代写。程序使用 state.sqlite3 保存运行控制状态，维护 versions / workspaces 文件；原材料沿 M02 读取，正文详情使用 JSON。版本按不可变字节 SHA-256 定位；数据库事务提交后才回复生成许可，文件发布仍沿原句柄保护 / 冲突恢复协议。JSONL 用于追加事件。旧控制 JSON 仅留迁移证据，不双写或静默回退。
 
 1. 建立独立字节副本和基线，记录相对路径、存在状态、哈希及所需元数据，不用硬链接。无法一致读取或文件占用时重建或报错，不略过后声称能完整恢复。
 2. 文件工具使用副本，Shell 默认工作目录为副本。进程树停止后扫描副本的实际新增、修改、删除、改名集合，校验结构、身份、来源、引用及模块字段归属。改名可表达为删除与新增；不只信任 Agent 返回的文件列表，也不将副本扫描当作其他位置未被写入的证明。
@@ -171,7 +179,7 @@ Agent 直接使用文件 / 命令工具修改副本，不要求业务保存工�
 
 ### 配置及生效
 
-统一 `~/.distillAI/config.json`，支持 `DISTILLAI_HOME`。配置按预期版本校验、持久化后切换；无效值保持原值并返回字段错误。按用户要求，真实 api_key 仅保存于控制层管理的本地配置；任务只持有内部凭证引用，密钥不进入模型、Skill、Web 读取结果或历史快照。
+统一数据根 `~/.distillAI/`，支持 `DISTILLAI_HOME`；当前配置版本指针在 SQLite，私有配置历史正文在 config/<version>.json。配置按预期版本校验、持久化后切换；无效值保持原值并返回字段错误。按用户要求，真实 api_key 持久保存在控制层管理的私有配置；控制层经认证管道将固定任务配置交给执行进程内存中的 SDK，密钥不进入模型载荷、Skill、Web 读取结果或历史快照。
 
 | 已有批准配置 | 初始值 / 校验 | 生效 |
 | --- | --- | --- |
@@ -955,3 +963,14 @@ Web 固定静态路由为 `/`、`/app.js`、`/styles.css`，浏览器经单次 `
 2026-10-16，用户明确要求删除 AGENTS.md 的新增框架 / 依赖限制，重构重复实现的通用能力并接续 Plan。决策方式：用户确认。本机 API 与同源 Web 改用 FastAPI / Uvicorn 的路由、请求 / 响应、异常和 ASGI 生命周期；模型转发使用 HTTPX 的 HTTP / 流式传输。项目依赖由 uv 管理，产品控制 / MCP / Web 在项目环境运行，Hermes AIAgent 任务仍使用已验证的 PM 环境，保持版本和安装归属。
 
 删除替代掉的 HTTP 协议 / 路由轮子，不以框架包裹原 BaseHTTPRequestHandler；通用框架不代替任务预算、来源身份、不可变记录、冲突提交和恢复这些业务规则。既有授权、Host / Origin / CSRF、一次性浏览器入口、固定模型目标和完整进程树停止必须继续验证。Plan 受影响：总 Plan R01、M01 HTTP / 启动、M07 MCP 入口、M08 API、CI 和本地依赖安装。原标准库优先表述作为历史保留，当前以本修订和总 Plan 技术基线为准。
+
+
+### Design 实质修订 3：复用重构、SDK 直连与 SQLite 控制状态
+
+2026-10-17，用户明确批准已复审的重写总 Plan / M01–M08，并授权持续实施。决策方式：用户确认。替换修订 2 的模型 HTTP 转发和全部文件控制状态：模型沿固定 Hermes SDK 直连，发送前由父进程确认持久预算；固定任务的私有模型 / 搜索配置经认证 Connection 交给子进程内存。SQLite 接管任务、幂等键 / 别名、依赖、生成 attempts / 额度、提交清单和配置版本指针；内容、采集队列 / cursor、私有配置历史、不可变版本仍为文件。数据库故障暂停受影响读写，文件发布沿未 committed 撤销 / 已 committed 补后继规则。离线迁移先停全部采集 / 后台 / 任务树、整根备份并核验；有新写入不得覆盖回退。NetworkX、FastMCP、Loguru、官方 TestClient、APScheduler 等具体复用及 Playwright / Ruff 由已批准 Plan 安排，不另建通用框架。环境拆分为产品 uv 与任务 PM；新证据不继承旧验证。Plan 影响：九份稿均 approved，G0 通过；余下 99 项逐项实施验证。需要用户决策的事项写入待办，其余独立步骤持续执行；不包含远端写入授权。
+
+### 2026-10-17：Windows 库覆盖的实施核对（Agent 闭环）
+
+复用 pywin32 的 CreateFile / ReadFile / WriteFile / SetFilePointer / SetEndOfFile / FlushFileBuffers、最终路径、按句柄 FileStreamInfo / 删除和 Job；普通文件与 Job 句柄由 PyHANDLE 管理。库的异常不继承 OSError，窄适配保持既有错误契约。原始 FILETIME 的 100ns 读写仍使用窄 Win32 绑定：[库的 GetFileInformationByHandle 返回日期对象](https://mhammond.github.io/pywin32/win32file__GetFileInformationByHandle_meth.html)，实测末位 7 被舍弃。根句柄相对 rename 虽有[库参数声明](https://mhammond.github.io/pywin32/win32file__SetFileInformationByHandle_meth.html)，实际返回 WinError 87，故保持 NtSetInformationFile；不改为绝对路径重新解析。NtCreateFile 根句柄相对打开与 NtResumeProcess 同样保持窄适配。具体可复现值见总 Plan 第三批与 .artifacts/third-win32-gaps.json。
+
+本次只补复用边界的技术事实，路径 / 时间 / 恢复 / 停树契约、数据兼容和批准范围不变，material_revision 仍为 3；Plan 补完成证据，不新增技术路线。

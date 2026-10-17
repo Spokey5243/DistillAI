@@ -54,7 +54,7 @@ def observe(runtime, key, kind, *, observed_at=None):
         path.parent.mkdir(exist_ok=True)
         atomic_json(path, record)
         version = runtime.store.put_version(path.read_bytes())
-    runtime._wake.set()
+    runtime.wake()
     return {**record, "version": version}
 
 

@@ -7,71 +7,52 @@ status: approved
 decision_mode: user-approved
 ---
 
-# M03：episode、计时与修订 Implementation Plan
+# M03：复用 episode 规则，闭合生命周期与修订 Implementation Plan
 
-> 执行者使用 `executing-plans`，按本模块 checkbox 推进；默认主 Agent 实施。
+> 2026-10-17 用户批准重写稿并授权实施；按 `executing-plans` 由主 Agent 持续执行。
+> 旧测试结果不代表新实现已通过；仅在取得当前验证证据后勾选步骤。
 
-## 来源与目标
+## 目标、现状与文件
 
-依据[统一 Design M03](../../design.md#episode-model)、[交接 C01 / C02](../../design.md#closing-contracts)及[总 Plan](../../plan.md)。保留完整来源，持久维护一条活跃 episode / session 和待归属缓冲，以真实生命周期收尾；纠错后把最新固定修订交 M04 / M05，并保护等待重分析的旧判断。
+依据[统一 Design M03](../../design.md#episode-model)、[C01 / C02](../../design.md#closing-contracts)与[总 Plan](../../plan.md)。复用已有 `episode.py` / `lifecycle.py` 的评分、缓冲、closing、修订与下游登记；补真实事件适配和语义验收。Modify：上述文件、`tools.py`、`runtime.py`、产品 dispatcher / hooks 与 `prompts/episode.txt` 的实际接入部分；复用 `tests/test_product_episode.py`、`test_product_lifecycle.py`、`test_product_corrections.py`。
 
-## 文件映射
+## M03-R1：真实生命周期与收尾
 
-Create：`src/distillai/episode.py`、`src/distillai/prompts/episode.txt`、`tests/test_product_episode.py`、`tests/test_product_lifecycle.py`。
+- [ ] **R1.1 固定实际事件事实。** 与 M02 / M07 共用 G2 合成会话，记录 request、Stop、其他 Hook 续跑、中断、SessionEnd、PreCompact / compact 的实际时序。取接入端 UTC、本地顺序和完整队列边界；缺信号明确保留未验，不能把 PreCompact 或后台到达时间当回复终止。
+- [ ] **R1.2 接到已有生命周期入口。** UserPromptSubmit 筛选前登记开始 / 暂停计时；可靠 Stop 在补采后登记终止；SessionEnd 在补采后登记收尾。复用现有事件链和 tick，不建新调度器。中断是否能启动计时按实测与 Design 收敛；不确认时保留不可靠状态。
+- [ ] **R1.3 复用定时器并验证迟到材料。** 依 M01-R5.7 用 APScheduler DateTrigger 按已持久的有效终止 UTC + 30 分钟调度，新 request 移除旧 job，重启按原 UTC 重建而不重计；一次性 job 显式设 misfire_grace_time=None，进程未重启但休眠 / 暂停跨过截止后仍执行到期检查。回调调用已有生命周期判定，再核对事件代次 / 队列边界后登记 closing，不自建计时线程。边界变化 / 缺事件不硬切。真实新续聊建新 episode，同段旧正文补采修订原段，无法区分先留缓冲 / 诊断。收尾排在固定材料之后，开始 / 发布前仍再核对代次。复用生命周期组，补其未覆盖的迟到执行回归：跨过截止后恢复只登记一次 closing，期间有新 request 则旧代次不得登记；断言业务结果，不断言 scheduler 私有字段。实际 Windows 休眠 / 唤醒作一次性集成探针，不在永久套件中让机器休眠。
 
-Modify：`tools.py` 注册 `evaluate_episode_boundary`，`runtime.py` 登记依赖 / 计时 / 修订保护，`plugins/distillai/hooks/dispatch.py`、`hooks.json` 接入生命周期。复用 M01 保存，来源只经 M02 读取；原队列只读。
+## M03-R2：同一 AIAgent 评分与修订交接
 
-## Task 1：验证并接入生命周期
+- [ ] **R2.1 只换程序工具调用方式。** `evaluate_episode_boundary` / `evaluate_episode_revision` 沿原 Python 业务函数，经 M01 管道调用，不给它们各建 HTTP 路由或任务。公式仍为 `R=0.2*K+0.8*(C/4)`、`S=4*(1-R)`，无有效关键词用 `S=4-C`；K / S 程序计算、C / 原文依据由模型提供并校验范围。工具不计生成，后续推理计入原任务。
+- [ ] **R2.2 复核原有归属不变量。** 一条 user 和其后多个 assistant 片段是一轮，工具不单计轮；每 session 一条活跃记录，归属 / 缓冲不重叠且不漏材料。S≥2 先缓冲，窗口三轮各 S≥3 且同目标再切换，不足窗口收尾共同保守复核；继续用原固定来源和多段引用，不复制原文当历史。
+- [ ] **R2.3 复跑修订发布链。** 用户明确纠错用已有版本 / 完整新归属 / 独立提交来源，新材料修订用真实引句和固定来源；并集守恒、同轮完整、跨 session 拒绝。关闭 / 修订 → M04（含空结果）→ M05；旧输入启动 / 发布前失效且保留计数，直接等待标记同清单发布。M05 当前修订成功才解除，不沿图扩散；M07 准备由现有依赖登记触发。
+- [ ] **R2.4 人工审阅语义。** 用获准实际模型核对追问、纠错、同主题新目标、独立插曲、短窗口 closing、旧段补采 / 新续聊；记录输入 / Prompt / 判断依据和原版本，不以 localhost 固定响应证明分段正确。完成真实 30 分钟与显式收尾记录，分别说明时钟模拟和 Desktop 实测范围。
 
-- [ ] **Step 1：观察真实 Hook 时序。** 在独立 Desktop 测试会话记录 UserPromptSubmit、Stop、PreCompact / compact SessionStart、中断和关闭 / SessionEnd 实际事件及可用字段；附接入端 UTC、顺序和采集后完整行数。检查 Stop 被其他 Hook 继续时是否等同终止。这个验证构成 G2 的计时部分，不能从“文档有事件”推断已收到。
-- [ ] **Step 2：固定事件适配。** 受保护记录包含 session、kind、观察 UTC、本地递增序号、当时完整队列行数；kind 沿 request_started / response_stopped / interrupted / session_ended。UserPromptSubmit 等筛选前登记开始，Stop 完成正文采集后登记终止，SessionEnd 补采后排收尾。PreCompact 不登记终止；中断的实际计时处理先依据 Step 1 同步 Design，不猜成功结束。
-- [x] **Step 3：写假时钟用例。** 终止后 29 分钟未收尾，新开始暂停旧计时，后续终止重新给完整 30 分钟；重启复用持久终止 UTC，不以文件 / 分析时间重计。缺事件 / 顺序不可靠不收尾；收尾任务只在所属已知材料处理后运行。
-- [ ] **Step 4：实现计时和延迟材料处理。** 程序保存有效终止依据、截止时间和已知来源边界；实际新续聊另建，旧段迟到材料交原 episode 修订。无法区分先缓冲、保留诊断，不按后台到达时间切新记录。计时只登记任务，不在 Hook 等 LLM。
-- [x] **Step 5：运行生命周期组。**
-
-```powershell
-python -m unittest discover -s tests -p 'test_product_lifecycle.py' -v
-```
-
-预期：`OK`；真实平台未提供足够事件时保持 G2 未通过，测试不模拟一个并不存在的平台保证。
-
-## Task 2：评分往返、归属与缓冲
-
-- [x] **Step 1：写公式和归属用例。** 覆盖下表、非法 C / 依据、无活跃记录、一个用户消息及多个助手片段同轮、工具不单计轮、三轮新交流、独立插曲、低分新轮不清缓冲以及不足窗口收尾。
-
-| 输入 | 程序结果 / 断言 |
-| --- | --- |
-| 关键词无交集、C=4 | S=0.8，保留旧目标 |
-| 关键词完全重合、C=0 | S=3.2，能进入独立交流判断 |
-| Jaccard=0.5、C=2 | S=2，边界值保留缓冲 |
-| 任一侧无有效关键词、C=1 | S=3，不制造关键词概率 |
-| C=5 / 非整数 / 来源不在固定任务范围 | 拒绝评分，不发布语义状态 |
-| 已有缓冲 + 新轮 S<2 | 共同复核，不单独清空旧缓冲 |
-
-- [x] **Step 2：实现最小记录。** episode 包含 C01 字段；source_refs 多段保留实际顺序，closed 添加 close_reason / summary。每 session 状态持久 active_episode_id / buffer；正文归属与缓冲不重叠，已处理材料不遗漏。历史只引用队列，不复制原文或 summary 替代。
-- [x] **Step 3：注册程序评分工具。** 校验固定旧 episode_ref、关键词 / 来源、候选原文 / C / 理由及最多五个规范关键词，计算 K / S 并保存实际输入 / 结果。Agent 在同一 AIAgent 循环收到结果继续编辑副本；最终提交仅采用程序保存的评分。不新建评分调度任务；工具不计次数，继续推理计同任务预算。
-- [x] **Step 4：接入 P02 维护任务。** P01 + P02 + 固定新材料 / 近期原文 / 状态 / 生命周期；开始后输入固定，新材料另排。无活跃记录直接建；S≥2 先缓冲，窗口内各轮 S≥3 且同一新目标才回落首轮切换；收尾不足窗口保守判断并保留理由。校验实际变更和 result 五字段，再交 M01 发布。
-- [ ] **Step 5：运行归属组并审阅语义案例。**
+## 验证、测试必要性和依赖
 
 ```powershell
-python -m unittest discover -s tests -p 'test_product_episode.py' -v
+$env:PYTHONPATH = 'src'
+uv run --locked python -m unittest discover -s tests -p 'test_product_episode.py' -v
+uv run --locked python -m unittest discover -s tests -p 'test_product_lifecycle.py' -v
+uv run --locked python -m unittest discover -s tests -p 'test_product_corrections.py' -v
 ```
 
-预期：程序约束 `OK`；用合成追问、纠错、同主题新请求、独立插曲审阅实际 AIAgent 原文依据。语义案例记录输入版本 / Prompt / 判断理由，不以固定措辞或模型自评分建立永久断言。
+预期各 `OK`。已有公式 / 版本 / 等待 / 处理位置 / 假时钟测试复用；只补真实事件适配导致的新失败路径，不复制 M01 事务测试。模型分段质量、Desktop 时序为一次性人工证据。依赖 M01 / M02 新组合，M04 / M05 / M07 共同回查交接；未有事件事实不标 G2 已过。
 
-## Task 3：关闭 / 修订交接与过时分析
+## 2026-10-17 批准与执行
 
-- [x] **Step 1：实现提交后业务依赖。** 新开放首次准备 M07，新增来源成功更新计周期；关闭 / 修订提交登记 M04，M04 成功包括空结果后登记 M05。依赖持久且幂等，失败保留待办，不将整链成功。关闭不表示理解 / 问题解决。
-- [x] **Step 2：实现纠错入口。** 用户编辑提交 expected_version、指定归属变化、原因与独立用户提交来源；新材料确有旧边界错误才修订直接受影响记录，不批量全历史重切或跨 session 自动合并。提交先校验身份 / 来源 / 不重叠，再登记最新修订分析。
-- [x] **Step 3：实现等待标记和旧输入防发布。** 同一修订提交中由控制层标记直接依赖受影响来源的判断；M03 不写 cognition。M04 / M05 运行前和提交锁内核对 episode 输入版本，过时则取消未发布副本、留输入 / 已用次数 / 历史并复用最新修订任务。已提交旧历史不删除；不替换运行输入或自动合并结果。
-- [x] **Step 4：补交接回归用例。** M04 空结果仍分析新用户表现；旧 M04 / M05 分析分别在启动前 / 提交前遇新修订不能发布；仅新修订对应 M05 成功才解除等待标记，失败继续等待；开放准备依赖变化不增加材料计数。复用 M01 事务测试，不重测存储实现。
-- [ ] **Step 5：验证真实收尾与修订链。** 手动 SessionEnd / 模拟时钟的业务收尾与真实 Desktop 30 分钟终止计时分别记录；旧段补采 / 新续聊各检查一次。确认来源 → episode → M04 → M05 / M07 全链版本可回查。
+用户明确批准本次重写总 Plan 与八模块 Plan，授权完成既有代码重构与计划内新功能。需要用户决策或外部条件的事项集中写入 [待办](../../pending.md)，不阻止独立可实施步骤；保留既有修改，不包含远端写入授权。
 
-## 测试必要性、依赖与状态
+## 2026-10-17 恢复后第三批：Windows、管道与到期恢复
 
-永久组保护轮次 / 缓冲、单活跃记录、评分工具范围、真实输入固定、生命周期暂停 / 重计、关闭 / 修订依赖和旧版防发布；现有采集测试无覆盖。Desktop 信号 / 终止误差、Prompt 归属质量和当前发行组合是一次性验证；不固定模型判断正确率或事件数。
+新增真实 APScheduler + 持久生命周期的迟到回归：进程未重启，暂停事件循环超过已保存截止和默认 misfire 宽限，恢复只登记一次 closing；暂停期间有新 request，旧代次不登记。周期扫描间隔设为 3600 秒，避免周期检查替代 DateTrigger。任务保留原终止时间 / 版本，模型次数为 0；本项只验证机械调度，不证明分段语义或 Desktop 事件时序。启动 / 调度 7 项通过，物理 Windows 休眠和 G2 仍未验，R1.3 因其余范围未全完而保留未勾。完整证据见[总 Plan](../../plan.md)第三批。
 
-依赖 M01 + M02，生命周期未知处保留 G2 验证条件；中断语义不得静默改 Design。当前无业务偏差。2026-10-13 用户授权按当前 Plan 开始实施，本 Plan 已批准；完成状态按 checkbox 与执行记录核对。
+<a id="historical-execution"></a>
+
+## 重写前的执行记录（历史证据）
+
+以下保留原记录、日期和旧 Task / Step 编号，便于回查。旧完成比例、批准状态、解释器组合及转发探针仅描述当时实现；不作为本稿的执行指令或本轮验证结果。旧计划全文可从 Git 中重写前的版本回查。
 
 ## 执行记录
 

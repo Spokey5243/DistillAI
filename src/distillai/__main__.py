@@ -19,15 +19,14 @@ def main():
         task_child()
         return
     from .startup import (check_environment, data_home, live_instance, public_instance,
-                          run_service, start_background, stop_background)
+                          run_service, start_product, stop_background, load_launch)
     home = data_home(options.home)
     if options.mode == "stop":
         print(json.dumps({"stopped": stop_background(home)}))
         return
     saved = home / "config" / "launch.json"
-    launch = json.loads(saved.read_text(encoding="utf-8")) if saved.exists() else {}
-    source = options.hermes_source or launch.get("hermes_source")
-    python = options.hermes_python or launch.get("hermes_python")
+    launch = load_launch(home, hermes_source=options.hermes_source, hermes_python=options.hermes_python)
+    source, python = launch.hermes_source, launch.hermes_python
     if not source or not python:
         parser.error("Explicit --hermes-source and --hermes-python are required before the first start")
     environment = check_environment(source, python)
@@ -48,8 +47,7 @@ def main():
             from .mcp import run_stdio
             run_stdio(home)
             return
-        bootstrap = f"import sys;sys.path.insert(0,{product_src!r});from distillai.__main__ import main;main()"
-        instance = start_background(home, [environment["base_python"], "-I", "-B", "-c", bootstrap, "serve", "--home", str(home)], python_launcher=python)
+        instance = start_product(home)
         if options.mode == "web":
             import webbrowser
             from .startup import instance_request
@@ -61,7 +59,7 @@ def main():
         return
     config = Config(store, protected_paths=(Path(source).resolve(), Path(python).resolve().parent.parent,
                                             Path(environment["runtime_dir"])))
-    executor = HermesExecutor(source, python, lambda task_id: live_instance(home)["url"] + "/internal/tasks/" + task_id + "/v1",
+    executor = HermesExecutor(source, python,
                               runtime_dir=environment["runtime_dir"], base_python=environment["base_python"])
 
     def business(task):
@@ -78,11 +76,8 @@ def main():
                       lambda task, result: business(task).validate_task(runtime, task, result),
                       after_commit=lambda task: business(task).after_commit(runtime, task),
                       prepare_result=lambda task, result: business(task).prepare_result(runtime, task, result))
-    sys.path.append(str(Path(source).resolve()))
-    from .expansion import tavily_request
-    runtime.web_request = tavily_request
     runtime.search_environment_key = os.environ.get("TAVILY_API_KEY", "")
-    runtime.expansion_ready = True  # G3: real keyless Search / Extract through actual AIAgent, 2026-10-15.
+    runtime.expansion_ready = True  # G3: direct child Tavily Search/Extract and M04→M07, 2026-10-17.
     from .episode import register_material
     run_service(runtime, material_register=lambda ref: register_material(runtime, ref))
 

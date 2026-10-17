@@ -6,35 +6,11 @@ from pathlib import Path
 import socket
 import time
 import uuid
-from urllib.error import HTTPError
 from urllib.parse import urlsplit
-from urllib.request import build_opener, HTTPRedirectHandler, Request
 
 from .knowledge import _snapshot, _references, _text
 from .sources import now as timestamp, read_source, record_submission
 from .storage import atomic_json, _hash, _identifier
-
-
-def tavily_request(endpoint, payload, api_key):
-    # Reuse the pinned provider's wire format without its implicit personal .env or provider selection.
-    from plugins.web.tavily.provider import (_tavily_headers, _normalize_tavily_search_results,
-                                             _normalize_tavily_documents)
-    if endpoint not in {"search", "extract"}:
-        raise ValueError("Unsupported Tavily endpoint")
-    class NoRedirect(HTTPRedirectHandler):
-        def redirect_request(self, request, file, code, message, headers, url):
-            return None
-    request = Request("https://api.tavily.com/" + endpoint,
-        data=json.dumps(payload, allow_nan=False).encode("utf-8"),
-        headers={**_tavily_headers(api_key), "Content-Type": "application/json"})
-    with build_opener(NoRedirect()).open(request, timeout=60) as response:
-        data = response.read(2 * 1024 * 1024 + 1)
-    if len(data) > 2 * 1024 * 1024:
-        raise ValueError("Tavily response exceeds 2 MiB")
-    record = json.loads(data)
-    if not isinstance(record, dict) or not isinstance(record.get("results"), list):
-        raise ValueError("Invalid Tavily response")
-    return _normalize_tavily_search_results(record) if endpoint == "search" else _normalize_tavily_documents(record)
 
 
 def _url(value):
@@ -53,7 +29,7 @@ def _url(value):
     return value
 
 
-def web_tool(runtime, task_id, tool, args):
+def prepare_web_call(runtime, task_id, tool, args):
     if not isinstance(args, dict) or tool not in {"web_search", "fetch_page"}:
         raise ValueError("Invalid web tool")
     if tool == "web_search":
@@ -68,10 +44,19 @@ def web_tool(runtime, task_id, tool, args):
         task = runtime._live(task_id)
         if task["kind"] != "expansion" or task["status"] != "running":
             raise ValueError("Only running M06 tasks may search or read the web")
-        key = runtime.config.private(task["config"]["version"])["values"]["search"]["api_key"] or getattr(runtime, "search_environment_key", "")
+    return {"endpoint": endpoint, "payload": payload}
+
+
+def web_tool(runtime, task_id, tool, args, response):
+    prepare_web_call(runtime, task_id, tool, args)
     try:
-        response = runtime.web_request(endpoint, payload, key)
-        if tool == "web_search":
+        if isinstance(response, dict) and set(response) == {"error"}:
+            error = response["error"]
+            code = error.get("code")
+            if code not in {"quota_or_rate_limit", "search_failed", "page_read_failed"} or set(error) - {"code", "http_status"}:
+                raise ValueError("Invalid web error")
+            result = {"error": dict(error)}
+        elif tool == "web_search":
             if not isinstance(response, dict) or response.get("success") is not True or not isinstance(response.get("data", {}).get("web"), list):
                 raise ValueError("Invalid search result")
             result = {"results": response["data"]["web"], "content_kind": "search_snippets", "searched_at": timestamp()}
@@ -96,14 +81,11 @@ def web_tool(runtime, task_id, tool, args):
                     runtime._save(task)
                 result = {"source_ref": ref, "url": record["url"], "title": record["title"], "text": text,
                           "read_at": record["read_at"], "truncated": record["truncated"], "content_kind": "extracted_excerpt"}
-    except HTTPError as error:
-        code = "quota_or_rate_limit" if error.code in {402, 429, 432, 433} else "search_failed" if tool == "web_search" else "page_read_failed"
-        result = {"error": {"code": code, "http_status": error.code}}
-        error.close()
     except (OSError, ValueError, KeyError, TypeError):
         result = {"error": {"code": "search_failed" if tool == "web_search" else "page_read_failed"}}
     with runtime.store.locked():
         task = runtime._live(task_id)
+        key = runtime.config.private(task["config"]["version"])["values"]["search"]["api_key"] or getattr(runtime, "search_environment_key", "")
         version = runtime.store.put_version(json.dumps(result, ensure_ascii=False, allow_nan=False).encode("utf-8"))
         task.setdefault("web_calls", []).append({"tool": tool, "arguments": args, "result_version": version,
                                                 "access_mode": "keyed" if key else "keyless"})

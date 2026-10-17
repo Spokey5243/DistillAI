@@ -3,140 +3,129 @@ version: v0.1.0
 issue: 4
 branch: codex/4-initial-development
 workflow: exploratory
-status: implemented
+status: approved
 decision_mode: user-approved
 ---
 
-# M01：运行、执行边界与保存 Implementation Plan
+# M01：SDK 直连、框架服务与共用运行 Implementation Plan
 
-> 执行者使用 `executing-plans` 按 checkbox 推进，默认主 Agent 实施；2026-10-13 用户授权按当前 Plan 开始实施。
+> 2026-10-17 用户批准重写稿并授权实施；按 `executing-plans` 由主 Agent 持续执行。
+> 旧测试结果不代表新实现已通过；仅在取得当前验证证据后勾选步骤。
 
-## 来源与目标
+## 目标、复用和文件
 
-依据[统一 Design M01](../../design.md#runtime-contracts)、[技术选择](../../design.md#technical-selection)、[总 Plan](../../plan.md)。完成一个常驻 Python 控制层，直接在独立任务子进程调用 Hermes `AIAgent`，可控制调用预算、业务路径授权、任务停止、冲突安全发布和崩溃恢复；OS 写隔离依据 Design 修订 1 延后。它是后续七模块的唯一共用运行基础。
+依据[统一 Design M01](../../design.md#runtime-contracts)及[总 Plan](../../plan.md)。在现有产品上替换基础设施；任务、快照、冲突提交、预算语义和普通任务停树继续复用。直连所需的私有凭证边界是总 Plan 明示的 Design 变更提案，不能声称已获批。
 
-## 文件映射
+Modify：`src/distillai/hermes.py`、`tools.py`、`runtime.py`、`server.py`、`startup.py`、`config.py`、`__main__.py`、`scripts/start.ps1`、`pyproject.toml`、`uv.lock`。`storage.py` / `windows.py` 替换通用锁 / 系统绑定，发布、冲突恢复和 Job 停树策略保持；字段模型还涉及 `sources.py` 及各归属模块。复用 `tests/test_product_{runtime,config,http,startup,tools,storage,windows}.py`（花括号为文件组说明，运行命令见下）。
 
-以下均以仓库根目录为基准。
+SQLite 增补：Create `src/distillai/state.py`（只封装具体控制状态 SQL / 事务，不建立通用 Repository）、`scripts/migrate_runtime_state.py`（离线导入旧控制状态）、`tests/test_product_state.py`（旧组遗漏的事务并发契约）。任务列表 / 历史读取、配置当前指针、提交清单与恢复调用同步经过 Store / Runtime 既有入口；测试中直接读取 `tasks/*.json` 的启动 fixture 改为公开状态查询。Ruff 的规则 / dev 组和 Playwright 的 browser 组由本模块统一写入 pyproject / uv.lock；浏览器用例由 M08-R3 实施。
 
-| Create / Modify | 职责 |
-| --- | --- |
-| `src/distillai/__init__.py`、`__main__.py` | 包、启动和 task-child 入口 |
-| `src/distillai/runtime.py` | 单例、任务登记 / 固定输入 / 调度 / 停止 / 计数 / 依赖 |
-| `src/distillai/storage.py` | 不可变版本、任务副本、变更扫描、发布 / 恢复 |
-| `src/distillai/windows.py` | 文件身份 / 共享模式和普通任务进程树停止；不实现写隔离 runner |
-| `src/distillai/config.py` | 版本配置、校验、脱敏、即时 / 延后生效 |
-| `src/distillai/server.py` | 本机 HTTP、请求授权、路由 / 限额 / 错误 |
-| `src/distillai/hermes.py`、`tools.py` | AIAgent 直接调用与工具清单；任务模型转发 |
-| `src/distillai/prompts/common.txt` | P01 正式批准后的全文 |
-| `scripts/start.ps1`、`pyproject.toml`、产品依赖锁文件 | 来源定位、已准备环境启动及固定产品依赖 |
-| `tests/test_product_storage.py`、`test_product_runtime.py`、`test_product_config.py`、`test_product_http.py`、`test_product_windows.py` | 永久契约组；Windows 组需实际能力可用 |
-| `.gitignore`、`README.md`、`.agents/rules/python.md`、`github-actions.md`、`.github/workflows/ci.yml` | 真实运行 / 检查说明和离线 CI |
+## M01-R1：Hermes 直接调用模型，程序接管额度
 
-一次性 probe 放 `.artifacts/initial-development/`，不形成产品诊断框架；已有采集插件、开发 Hook 和 Hermes 上游代码不改。
+- [x] **R1.1 固定适配证据。** 在已固定 Hermes 源码逐项核对 `run_agent.AIAgent`、`client_lifecycle._create_request_openai_client`、`agent_runtime_helpers.create_openai_client`；记录共享、请求专用、重建和重试链。先用既有 AIAgent 合成探针复现正常 / 503 / 第 16 与 17 次行为，不安装或修改上游。
+- [x] **R1.2 接入唯一 SDK 客户端构造点。** 在 `hermes.py` 的窄 AIAgent 适配中覆盖固定版本 `_create_openai_client`，向上游 builder 提供带计数钩子的 HTTPX client，保留原 TLS / keepalive / 关闭方式。所有实际请求前取父进程持久预算许可，原 SDK 直连配置 endpoint、处理流 / 错误 / retry。SDK 隐式重试保持上游的 `max_retries=0`；Hermes 外层每次重试重新经过同一门禁。仅接公开 HTTPX 接口，不复制上游 request builder、provider transport 或流式解析。
+- [x] **R1.2a 保留模型参数。** 原代理覆盖的配置改用 `AIAgent(max_tokens=..., request_overrides=...)`：max_tokens 走构造参数，temperature / top_p 走 request_overrides，当前允许的 DeepSeek thinking 配置走其 extra_body。以实际发送请求核对最终值和 model / endpoint；不让 Hermes 默认值覆盖固定任务配置，不在 HTTP 字节层重写 JSON。模型连接信息与实际参数取本任务私有配置版本，已启动任务不跟随新配置漂移。
+- [x] **R1.3 复用标准库 Connection。** 使用 `multiprocessing.connection.Listener/Client(family='AF_PIPE')` 给单个任务建立认证的 Windows 管道连接，标准库处理分帧 / EOF / 握手；用 `send_bytes` / `recv_bytes(maxlength=8*1024*1024)` 传严格 JSON，不用 pickle send / recv，不自写 stdout 行协议或缓冲解析器。现有 stdin 仅送一次私有 pipe 地址 / authkey，Popen / PM 解释器与先入 Job 再 resume 保留；连接后交付配置、输入、预算确认、程序工具和结果。父进程绑定该任务、校验操作 / 阶段 / 尺寸、串行请求；stdout 不承载业务协议，模型响应仍由 SDK 处理。
+- [x] **R1.3a 先证明阻塞等待可退出。** 在 R1.2 业务接入前，用实际 Windows 父子进程分别验证 accept 前子进程未连接、连接后不完成认证、认证后不回复、读写中取消和父进程死亡。连接 / 认证分别设置有限截止；消息等待按现有调用截止或取消信号结束，不新增模型总执行时限。连接由明确的通信执行单元持有，控制层负责发出取消、停止 Job 并确认等待线程退出；逐项记录所用公开接口、关闭 / 中止顺序和有界回收时间。poll / wait 只用于已建立连接的可读等待，不能当作 accept / 认证超时；关闭句柄能否唤醒实际阻塞操作必须由探针证明，不能仅取消 AnyIO 等待或遗弃后台线程。任一阶段不能有界退出则不进入 R1.2，也不把临时换成自写 RPC 当作完成。
+- [x] **R1.4 保留数据和失败契约。** 连接配置只从固定私有配置经管道私有 bootstrap 交 SDK，不把 key 加入持久 `task.inputs`、`visible_inputs` / Prompt / 历史；请求快照沿现有脱敏方法，移除代理时把仍需使用的 `_history_request` 迁到执行适配处，保留真实 Prompt / 工具 / 请求 / 最终结果版本。额度许可必须先落盘再回复；父进程死亡 / EOF / 取消终止等待，Job 确认停止才回收名额。连接前可确认未发出用同 attempt_id 退额，其他未知失败保守计数；验证恢复沿原 Runtime，不用 finally 统一退额。
+- [x] **R1.5 删除旧代理路径。** 直连探针通过后删除 `BackendServer.model_base`、`_Handler._model`、模型 `/internal/tasks/{id}/v1/*`、`_program_tool` HTTP 客户端和任务 proxy token 逻辑，仅在确无剩余调用者后删除相关方法。程序评分 / 读取审计 / ID / 来源工具改用管道上的原业务函数。全仓查调用者，不能留下“新 SDK → 本机代理”或第二套模型传输。
+- [ ] **R1.6 验证实际 AIAgent。** 同一真实执行器验证文件 / Shell 工具、评分往返、只读 query、无工具筛选；分别造 503 后恢复、客户端重建、断流、连接拒绝、重启续额、16 次完成和 17 次拒发。合成 provider 记录真实到达请求数，与任务账本核对；额外辅助生成无法覆盖就保持关闭。取得一次获准实际模型的流式工具往返，只报机械通过 / 语义未验的真实范围。
 
-2026-10-15 后续执行边界修复：Hermes 可修改 stdout 编码，task-child 协议改为显式 UTF-8 字节，使用非 GBK 可编码字符的回归测试。Windows PM 虚拟环境解释器为转发器，任务改用 check_environment 核对的底层解释器，设置虚拟环境 launcher 配置保留原依赖；CREATE_SUSPENDED 后加入 Job，再恢复执行并发送输入。分配失败显式终止尚未加入 Job 的挂起进程。启动 / 三代进程停树与错误清理在两解释器验证；没有增加写隔离。后台启动请求 Windows breakaway，拒绝时明确要求在可独立启动的入口执行。MCP 当前先复用 Serve 实例，SDK 关闭传输后的后台存活与冷启动限制见 M07 记录。
+## M01-R2：FastAPI / Uvicorn 替换手写 HTTP
 
-## Task 1：冻结可工作的执行组合
+- [x] **R2.1 先保留路由契约。** 从现有 HTTP / Web / MCP 用例列出路径、method、业务载荷、status、error code 和授权要求；将测试启动 fixture 换为真实 ASGI 应用，原业务断言继续使用。FastAPI 默认 422 等若不同，按现有公开错误契约做窄映射，不让替换框架静默改 API。
+- [ ] **R2.2 使用框架能力。** `server.py` 提供 app 创建入口、明确路由、Pydantic 请求模型、Dependencies / 异常处理、JSONResponse / FileResponse；Host / Origin / CSRF 和读取 body 实际尺寸仍作边界检查，不仅相信 Content-Length。路由调用现有业务函数；移除 Handler、手动 headers / 状态行 / chunk 处理和字符串路由大分支。默认文档 / 静态子路由也必须遵守本机授权策略。
+- [x] **R2.3 统一生命周期。** 用 FastAPI lifespan 与 Uvicorn 单进程启动 / 关闭；沿现有启动锁持有一个实例、一个业务 worker。服务 ready 后才发布 instance 信息；同步存储 / 业务工作不阻塞 ASGI event loop，沿现有 worker / 框架线程执行。停止先拒绝新任务、停树 / 恢复，再结束服务、清实例；不以 FastAPI BackgroundTasks 代替持久任务队列。
+- [x] **R2.4 验证框架入口。** 无授权、非法 Host / Origin、超限 body、未知路由、失效任务、409、慢模型时 health / config、并发启动和显式停机复跑原用例；至少一项真实监听 socket 的探针核对绑定地址与启停，TestClient 结果不能替代操作系统生命周期。
 
-先通过 G0；本任务运行结果是 G1 的证据，不自动授权安装额外框架、改主机 ACL 或选择新长期技术路线。
+## M01-R3：项目依赖环境和启动
 
-- [x] **Step 1：记录本机和本地源码。** 记录 Windows build、Python / 架构、Hermes 当前 SHA 和与 Design 查证 SHA 的差异。核对当前源码的 Library、PM、provider、工具注册和资源加载入口，不从旧 Pi / TS 提案复制参数。
+- [x] **R3.1 按安装归属锁依赖。** 控制 / Web / MCP 由 uv 项目环境运行，Hermes 子进程由固定 PM 应用环境运行。实际直接导入的 FastAPI、Uvicorn、HTTPX、Pydantic、FastMCP、Loguru、NetworkX、AnyIO、jsonschema、Windows pywin32、Portalocker、ItsDangerous、pydantic-settings、APScheduler 3.x、pathvalidate、boltons 声明为直接依赖，由 uv 解析整组兼容版本并生成锁。候选 FastMCP 4.1.0 / Loguru 0.7.3，MCP SDK 不再独立于上层 FastMCP 强行冻结；只有直接使用底层 SDK 才保留直接声明。SQLite 使用标准库 sqlite3；Ruff 放 dev 组、Playwright 放 browser 组，均不进入产品运行依赖。先拆清 `task-child → hermes → runtime/storage/sources` 当前导入链，任务入口不能因父进程的 Store / schema 顶层 import 被迫加载产品环境包；确需共享的执行模型逐项核对 PM 已有版本，不能假定传递包兼容。Web / 图 / Loguru 不拖进 PM，不往 PM 安装产品框架、不复制整份 PM 依赖、不手改 lock。
+- [x] **R3.2 修正环境检查和解释器路由。** `startup.check_environment` 拆清产品依赖检查与 Hermes SHA / PM receipt / AIAgent 导入检查；不要求 PM 匹配全产品锁。启动脚本由产品解释器执行，`-HermesPython` 只定位任务解释器；MCP / Web 不再自动切 PM。保存的 launch 配置按实际职责读取，Windows 底层解释器 / launcher / suspended → Job → resume 沿已有已验证实现。
+- [x] **R3.3 统一普通本机客户端。** 启动和 MCP 复用 HTTPX 的 request / timeout / 错误映射，loopback 禁用环境代理、不跟随外部 redirect；不新建通用 HTTP 封装层。采集通知继续不读响应，200ms / 不启动后台语义不因客户端替换改变。
+- [ ] **R3.4 同步本地与 CI。** 更新根 README、Python / Actions 规则、原 Windows CI job 的项目锁安装和测试命令；仍无模型 key / Hermes 下载 / Codex CLI。记录 Check / Serve / Web / Mcp / Stop 的实际解释器、退出和实例身份，不把未验冷启动写通过。
+- [x] **R3.5 接入 Ruff。** pyproject 的 `[tool.ruff.lint]` 初始 select 为 `E9,F63,F7,F82,F401,F811`，检查 src/distillai、产品插件、scripts、tests 和 .codex/hooks。运行下列命令，修复命中的真实未定义名称 / 无用导入等；不启用全量风格规则或顺便 format 全仓，不用整体 ignore / noqa 掩盖问题。开发组安装与 CI 命令同步 Python / Actions 规则；规则配置核对是一次性验证，不新增检查配置字符串的永久测试。
 
-```powershell
-git -C E:\JourneyIntoAI\DL_and_LLM\projects\hermes-agent rev-parse HEAD
-python --version
-Get-ComputerInfo -Property WindowsVersion,OsBuildNumber,OsArchitecture
-```
+## M01-R4：复用业务回归并清点删除
 
-预期：得到明确版本事实；源码路径只用于本机验证，不写死在产品中。
+- [x] **R4.1 复跑任务 / 保存契约。** 固定输入、优先级（筛选 / 查询 / 普通）、普通单名额 + 筛选独立名额、最后允许生成、取消 / 授权收紧、旧 episode 输入不得发布、快照 / 提交 / recovery_conflict、配置版本各跑原组。不得为换 Web 框架重写 Store / Runtime 状态机。
+- [ ] **R4.2 删除重复基础设施并记录。** 一次性查无 BaseHTTPRequestHandler / ThreadingHTTPServer / 模型代理剩余调用；解释必须保留的 Windows 句柄代码和产品规则。记录新探针 / 测试 / 锁 / 环境和缺口，替换部分未验前保持本稿 draft / 未完成，不继承旧 M01 implemented。
 
-- [x] **Step 2：在独立数据根准备 Hermes 应用环境。** 设置专用 `HERMES_HOME` / `HERMES_RUNTIME_DIR`，依据固定源码的官方 PM 流程准备应用环境；记录 receipt、实际解释器、导入路径与锁文件摘要，不用 pip / uv 直接修改 PM 环境。开发激活另含 dev / test 环境，其失败单独记录，不作为直接 Library 接入的必要条件。首次准备及下载在已批准范围内；下面命令核对本次已由 PM 准备的实际选择，不是首次 bootstrap 配方。
+## M01-R5：补齐通用能力复用
 
-```powershell
-$env:HERMES_HOME = Join-Path $env:TEMP 'distillai-hermes-validation'
-$env:HERMES_RUNTIME_DIR = Join-Path $env:HERMES_HOME 'tools'
-$facts = Get-Content (Join-Path $env:HERMES_HOME 'installs/df016e59190fdbc4/facts.json') -Raw | ConvertFrom-Json
-$HermesPython = Join-Path $facts.packages.venv.environment 'Scripts/python.exe'
-Push-Location E:\JourneyIntoAI\DL_and_LLM\projects\hermes-agent
-& $HermesPython -m pm.cli install --trust-recorded
-& $HermesPython -c "import sys; from run_agent import AIAgent; print(sys.executable); print(AIAgent.__module__)"
-Pop-Location
-```
+- [ ] **R5.1 字段模型复用。** 配置、SourceRef / RecordRef、工具参数和各模块记录的结构用 Pydantic strict / extra=forbid 及 TypeAdapter；共用引用模型在 `sources.py`，领域结构留归属模块。工具 schema 由同一模型生成，已有上游 JSON Schema 用 jsonschema 校验；删除被替代的字段类型 / required / 枚举遍历，保留跨记录来源、权限、前后版本 / 业务判断。字段错误仍能映射原 API 路径，既有非整数 / bool / 非有限数 / 未知字段用例结果不变。
+- [x] **R5.2 复用 pywin32 绑定。** 在 `windows.py` 用 win32job / win32file / win32api 已有封装替换覆盖到的 ctypes 声明与结构，保持原访问掩码 / share mode / flags；Job limits 用库的字典结构，句柄用 PyHANDLE 管理。对 NtCreateFile 根句柄相对打开 / rename、未覆盖的挂起恢复等列出残余窄适配和原因，不重写 ntdll SDK。复跑全部实际 Windows 组，覆盖路径替换、元数据 / ADS / 硬链接和父子孙停树；库能 import 不等于这些行为通过。
+- [x] **R5.3 复用普通文件锁。** `Store.locked` 与启动 `_lease` 改用 Portalocker 的文件锁 / RLock，Store 外层仍用 threading.RLock 保证跨线程串行，启动竞争使用非阻塞获取。核对相同锁文件身份、嵌套计数、释放和异常；保留现有跨进程用例，补旧用例没有的嵌套 / 跨线程路径。不得用普通 sidecar lock 替换文件发布的句柄身份保护。
+- [ ] **R5.4 用 Loguru 写诊断。** 产品解释器内配置 `logger.add` 的 serialize、rotation / retention / compression，业务直接 `logger.bind` 附 task / session / stage / error_code；不写 Formatter、文件轮转 / 清理器或 Logger 抽象。显式 diagnose=False / backtrace=False，不记录任意异常正文、原文或 key。后台队列 sink 在退出 complete；产品 Hook / MCP 进程分别初始化独占 sink。PM 任务进程沿 Hermes 日志配置，产品诊断只传白名单字段给父进程落 Loguru，不在 PM 导入 Loguru，不把 enqueue=True 当跨解释器共享队列。MCP stdout 只协议，日志故障继续回答。Store.event 的持久事件保留原语义，SQLite 已接管的控制状态不能依靠诊断日志恢复。
+- [x] **R5.5 用 FastAPI 官方测试工具。** API / Web / 授权 / 参数 / 错误 / Cookie 组直接 `from fastapi.testclient import TestClient`，`with TestClient(app)` 管理 lifespan；用 `app.dependency_overrides` 注入临时 Store / Runtime / 授权依赖，finally 清空。删除手写 HTTP 测试客户端 / 服务线程；HTTPX MockTransport 只替外部上游，不替被测 app。现有 unittest 可直接使用 TestClient，不因为官网示例用 pytest 就迁移全部测试。socket / 流式断开 / PM 跨进程计数 / Job 仍真实验证；Connection 验错 authkey / 超长消息 / EOF / 取消及跨解释器往返，断言公开结果和无副作用。
+- [x] **R5.6 复用启动配置加载。** `startup.py` / `__main__.py` 用 pydantic-settings 的 BaseSettings 和内置 JSON source 读取启动位置；显式固定 CLI 参数 → 获准 DISTILLAI 环境 → 指定数据根 launch.json → 默认值优先级。关闭 dotenv 与未声明 secret 目录源，不读个人 Hermes 配置；原 CLI 由 argparse 解析后传入初始化源。版本化业务 Config 不用环境热更新，任务仍引用固定私有版本。复用 startup / config 用例验证路径优先级、缺参和敏感字段不输出。
+- [x] **R5.7 复用定时触发。** FastAPI lifespan 中启动单个 APScheduler 3.x AsyncIOScheduler，用 IntervalTrigger 调用原扫描 / 外扩资格检查、DateTrigger 调用已有 episode 到期判定；修改配置 / 新轮开始分别 reschedule / remove_job。只用内存 job store，重启从原持久终止 UTC / 外扩进度重建并立即检查已到期事件，max_instances=1 / coalesce 防重复唤醒。episode 的一次性到期 job 显式设 misfire_grace_time=None，允许进程未重启但休眠 / 暂停跨过截止时间后补执行；仍使用原截止和事件代次，不从恢复时刻重新计时。周期扫描 / 外扩只合并唤醒并检查当前资格，不补造每个错过时刻的业务任务。回调仍复核来源、事件代次 / 权限 / 固定输入再登记 Runtime 任务；不复制 APScheduler 调度算法，不让 scheduler job 的成功状态代替业务提交，不另设 APScheduler 数据库或 Redis。
+- [x] **R5.8 复用路径词法校验。** `storage._relative` 的保留设备名与非法字符检查改调用 pathvalidate Windows 校验；先对原始路径段拒绝空 / 绝对 / `.` / `..`，再调用库，避免路径规范化先吞掉这些输入。只 validate、不 sanitize；长度规则按已有合法路径回归核对，不静默截断。目录授权、句柄身份、junction / ADS / hard link 和恢复规则继续检查，库处理词法不等于具备文件权限保证。
+- [x] **R5.9 复用原子单文件写入。** `storage.atomic_json` 采用 `boltons.fileutils.atomic_save` 的同目录临时文件 / fsync / 替换 / 异常清理，产品只负责严格 JSON 编码、UTF-8 LF 和既有锁。临时 part_file 使用任务唯一名称，不覆盖其他写者或盲删残留；核对 Windows 覆盖、占用和中断失败仍保留旧配置。仅替单文件保存通用部分，不把 AtomicSaver 当多文件事务 / 用户文件冲突恢复，复用 storage / config 用例验证。
 
-预期：PM 应用准备与导入分别退出 0，输出实际解释器和 `run_agent`；导入检查不证明已执行模型任务。失败记录 PM / 依赖事实，不改用 Hermes CLI。安装 key / 路径仅是本机验证事实，产品启动不写死该 generation。
+## M01-R6：SQLite 运行控制状态与离线迁移
 
-- [x] **Step 3：验证最小 AIAgent 任务。** 在忽略目录写一个 probe，直接导入 AIAgent、设置 `quiet_mode=True`、显式模型 / 固定本机转发 endpoint / 工具集，调用 `run_conversation()`。由本机合成服务依次返回工具调用和终结 JSON；记录实际构造参数、工具注册方法、关闭方法、缓存 / 压缩 / retry 路径及实际 system / tools 全文。禁用个人配置发现、自动扩展 / MCP、并行子 Agent、无额度后台活动和无需的功能。最后用用户实际配置的模型核对一次流式工具往返，凭证只在控制层。
-- [x] **Step 4：验证请求计数接管。** 本机合成服务记录每次实际到达的生成请求；覆盖正常结束、工具后继续、失败重试、压缩 / 辅助请求、第 16 次完成、第 17 次拒绝、同任务重启。将各调用导向受保护转发入口；无法接管的自动模型活动关闭。对未知是否已发出记录保守计数；不把 AIAgent `max_iterations` 当外部请求额度。完成一次“并发普通任务 + 独立筛选”验证；单槽模型服务实际排队只记技术约束，不承诺服务端抢占。
-- [x] **Step 5：验证普通任务进程停止。** 使用普通任务子进程与 Job Object / 进程树生命周期控制，验证父 / 子 / 孙都能运行；取消或授权收紧后停止整棵树，确认心跳 / 文件写入停止后才恢复和释放名额。普通进程访问本机模型转发与外网沿 Step 3 / 4 的实际组合核对。Job 只证明生命周期，不作为写隔离；本次不验证 MXC、restricted token、主机 ACL 或沙箱 stdio 转发。
-- [x] **Step 6：验证 Win32 提交窗口。** 在临时目录用 `CreateFileW` 共享模式、文件 / 目录身份和落盘操作实际检查：用户占用、比较后替换、删除 / 改名、路径被 junction 重指、新文件抢占、部分发布后再次用户编辑。记录通过句柄执行的操作及不能保证的窗口；无法可靠阻止目标替换就拒绝发布。
-- [x] **Step 7：冻结环境和依赖。** 首选不修改 PM 源环境即可共用兼容依赖的最小组合；产品 MCP 依赖若与 PM 冲突则分离控制层环境，子进程仍用 PM 解释器。记录固定源码 SHA、PM receipt、产品 SDK 版本 / 锁、普通任务子进程与停树启动方式，再把下面启动命令改成验证后的实际命令。G1 未通过不执行具有任意写 / Shell 能力的产品维护任务。
+用户已同意 SQLite 选型，本节的具体持久化与迁移方案仍随 draft 审阅。保留 Store / Runtime 对外返回的任务与提交结构，替换内部保存方式；不将模型、浏览器或 Hook 接到 SQL。
 
-能力矩阵的每项记录实际命令、退出码、观察文件哈希 / 进程状态及通过 / 失败；只读文档和假 runner 不构成放行结果。trajectory 训练方向保留；不在本任务实现训练导出或 RLVR。
+- [x] **R6.1 固定权威状态与 SQL 约束。** `state.py` 在数据根管理 `state.sqlite3`。任务行保留稳定 ID、状态、顺序、额度及输入 / Prompt / 结果版本引用；任务去重键和合并别名用唯一键关联 task_id；依赖、生成 attempts、提交清单 / 阶段、当前配置指针同库保存。模型调用次数只保留一份权威值，返回 JSON 从该值组装，不能再维护磁盘任务 JSON 的第二份计数。attempt 用 `(task_id, attempt_id)` 唯一约束；重复 attempt 沿既有拒绝契约且不能再次扣额。领域内容、原始队列、采集 cursor、配置历史正文、不可变字节快照和原业务事件文件保持原格式。数据库、journal / wal / shm、迁移备份全部纳入私有路径保护，不能出现在 Agent 可发布范围或静态资源中。
+- [x] **R6.2 使用短事务与明确线程归属。** 标准库 sqlite3 使用参数化 SQL、foreign_keys=ON、synchronous=FULL、有限 busy timeout（初始 5 秒）、显式事务模式。本轮使用本地磁盘数据库及默认回滚日志，不叠加 WAL 调优。通过 `isolation_level=None` 和显式 BEGIN IMMEDIATE / COMMIT / ROLLBACK 管理读后写单元，不混用隐式事务配置；schema 版本以 user_version 记录，较新未知版本明确拒绝打开。连接在执行该完整同步事务的工作线程内创建 / 使用 / 关闭，禁止跨线程复用和在 event loop 中直接等待 SQL。锁顺序统一为既有 Store 发布锁在前、短 SQL 事务在后；事务外调用模型、搜索、IPC 或等待 Job，避免长时间持写锁。取消协程后仍核对事务结果，不误报已回滚。
+- [x] **R6.3 替换所有控制状态调用者。** Store.read_task / read_commit / 保存入口与 Runtime.tasks / register / register_increment / dispatch / reserve_generation / release_unissued_generation / retry / cancel / recover 接到同库；Config.read / private / update、Web 历史 / 启动检查及相关测试 fixture 同步，删除生产环境直接扫描 tasks / commits JSON 的路径。任务登记、去重键 / 别名、依赖在同一事务保存；额度与 attempt 在同一事务校验和更新，COMMIT 成功后才能回复生成许可，数据库忙 / 失败时拒发。配置更新全程持 Store 锁并核对 expected_version，选择未占用版本号，以不覆盖方式保存私有版本文件，再条件更新当前指针；数据库失败遗留的文件不复用覆盖，版本号允许跳号。两个更新竞争只允许一个生效，已引用的配置历史不能被失败更新改写。通过现有 API 返回相同结果，任务进程不直接打开数据库。
+- [ ] **R6.4 保留数据库之外的文件恢复。** 输入 / 结果不可变字节先完整落盘再保存哈希引用。发布前将意图和文件基线持久化到提交清单，文件替换仍使用既有句柄保护 / 冲突检测；全部目标核对完成后，把提交完成、任务结果和数据库归属的后续状态在短事务中更新。文件归属的处理位置仍通过原恢复协议关联提交 ID，不能在文件发布前推进。沿 Design 原有恢复规则：数据库未 committed 时，无论只写部分文件还是全部写完，均按清单校验文件身份 / 本次版本并撤销已应用部分；数据库已 committed 时，只补处理位置 / 后继登记 / 索引，不撤销已提交内容、不重跑模型或清额度。发现用户再编辑、内容缺失或不能安全撤销时进入 recovery_conflict，保留前后版本，暂停冲突范围后续写入；数据库标完成也不能掩盖缺失内容。运行中 sqlite3.Error 同样进入失败处理，不能只沿旧 OSError 分支；若数据库持续不可写而无法记录恢复进度，控制层先停止派发和发布，并阻止读取受影响的半成品。无法可靠确定范围时暂停该数据根的业务读写，仅保留健康 / 诊断 / 停机入口，保留已持久清单和文件，恢复可用后先完成恢复再开放。清理不得依赖下一次数据库写入成功才能停树或结束等待，亦不得谎报恢复成功。启动恢复完成前不开放可读半成品的业务接口；未引用的临时文件保留，不在本轮自动垃圾回收。
+- [x] **R6.5 离线迁移与回退。** `scripts/migrate_runtime_state.py --home <data-root>` 要求后台与任务树已停、持有原数据根互斥且无未解决发布恢复；只先在合成副本演练。开始备份前还须暂停所有指向该数据根的采集入口，等待在途 Hook 结束，确认队列 / cursor 不再写入；Store 锁不覆盖 Hook 队列锁，不能据此声称数据根静止。保持停写直到数据库安装和核验结束，中途无法确认停写则中止迁移。备份整个数据根并记录包括队列 / cursor 在内的业务持久文件清单与哈希，源与备份逐项核验；在同目录临时数据库一次事务导入旧任务 / attempts / 别名 / 依赖 / 提交 / 配置指针，核对现有计数、顺序与内容引用，执行 integrity_check 与 foreign_key_check。全部通过、关闭连接后才安装 state.sqlite3；失败保留旧文件和错误，不能留下可用半库。再次运行在相同完整迁移标记时核验后退出，既有非迁移库或来源变化则拒绝覆盖。新程序发现旧控制文件但无库时要求显式迁移，不能当空库启动；迁移后只读 SQLite 权威状态。旧控制文件保留为只读证据，不双写；旧版本不得针对迁移后数据根启动。只有重新停止全部写入者、核对切换后零新写入时可恢复完整迁移前备份；核对必须包含 Hook 队列 / cursor 和领域文件，不能仅检查数据库。已有新写入或无法确认时保留现状修复 / 另定导出，不能用过期 JSON 回退。工具存在不授权本轮操作用户真实数据。
+- [ ] **R6.6 验证长期一致性。** 复用 storage / runtime / config / startup / web / corrections 组；仅在 test_product_state.py 增加旧文件实现组遗漏的并发事务用例：相同登记键只生成一个任务、两个连接竞争最后一个额度只放行一次、重复 attempt 不重复计数、数据库锁超时不发送模型请求、事务失败不留部分状态、重启保留预算。原发布中断用例改走真实数据库，分别核对部分文件已写 / 全部文件已写但 DB 未 committed 均安全撤销，以及 DB 已 committed 只补后续状态；保留外部改动导致 recovery_conflict 的覆盖。补现有组未覆盖的存活进程数据库写失败：使用真实数据库的写锁超时或容量限制触发失败，检查拒绝继续发布、半成品不可读、停树可结束、数据库恢复后可按清单恢复；不能只用 mock SQL 抛异常代替这些证据。迁移的停采 / 等待在途 Hook、备份与队列 / cursor 一致性、恢复采集后拒绝旧备份回退、旧 JSON 不再被读取和文件布局是合成副本上的一次性演练证据；数据库约束、取消 / 崩溃数据完整性保留为永久测试。
 
-## Task 2：版本、副本和冲突安全提交
+## 验证命令、测试必要性与依赖
 
-- [x] **Step 1：建立最小持久布局。** 用 `DISTILLAI_HOME` 定位 config、tasks、versions、commits、workspaces 和程序事件；默认 `.distillAI`。内容版本用不可变字节 SHA-256；JSON 保存使用同目录临时文件、flush / fsync、锁内替换；追加事件用 JSONL。将 `.distillAI/`、既有 `.distallAI/`、凭证、PM 数据、虚拟环境和临时证据纳入提交排除。
-- [x] **Step 2：先写提交回归用例。** 临时目录构造新增、修改、删除、改名、未改变文件和同期用户修改；准备清单后模拟逐项中断及用户再编辑。断言失败保留用户版本、业务 / 处理位置不提前成功、历史前后版本可读取。新测试补齐现有采集测试没有覆盖的多文件发布 / 恢复风险。
-- [x] **Step 3：实现副本和变更扫描。** 创建独立字节副本，记录基线存在性、哈希、元数据和原授权路径；来源一致读失败明确报错。任务停止后扫描真实差异而非信任模型文件列表；程序拒绝发布新增链接、特殊设备、NTFS 附加流和不能恢复的元数据修改。校验文件身份、相对路径、结构、来源及业务模块归属。
-- [x] **Step 4：实现 prepared → committed。** 保存前后不可变版本和逐项状态；取权限 / 提交锁核对授权、当前 episode 输入修订和原文件基线。使用 Task 1 验证的句柄适配持有目标保护，新文件排他新建；未改变文件不写回。整批完成才标 committed；完整持久化后推进处理位置 / 依赖，再触发索引补建。
-- [x] **Step 5：实现崩溃恢复。** 读取同一提交清单补完业务已 committed 的后置登记，禁止重跑模型；提交未完成时只撤销仍等于本次发布版本的项目，用户再编辑或恢复失败进入 `recovery_conflict` 并暂停冲突范围。运行失败仅丢弃未发布副本，保留任务和版本证据。不能声称外部编辑器可原子看到整批文件。
-- [x] **Step 6：运行存储组和 Win32 组。**
+先 G0，R3.1 准备环境 / 导入边界，R2 框架入口可独立验收，再 R6 SQLite → R1.1 / R1.3 / R1.3a 管道可取消探针 → R1.2 及剩余直连额度项 → R3 剩余启动项 → R5 → R4 回归。Ruff 随相关改动运行，R5 的文件锁 / atomic_save 只处理仍归属文件的状态。异步协调运行在 asyncio / AnyIO，阻塞事务与文件操作放工作线程；同步 AIAgent 留独立进程。HTTPX 钩子、Connection、SQLite 迁移和 pywin32 替换均未实测，未通过的组合不继承旧证据。
 
 ```powershell
-python -m unittest discover -s tests -p 'test_product_storage.py' -v
-python -m unittest discover -s tests -p 'test_product_windows.py' -v
+$env:PYTHONPATH = 'src'
+uv run --locked --group dev ruff check src/distillai plugins/distillai scripts tests .codex/hooks
+uv run --locked python -m unittest discover -s tests -p 'test_product_state.py' -v
+uv run --locked python -m unittest discover -s tests -p 'test_product_http.py' -v
+uv run --locked python -m unittest discover -s tests -p 'test_product_runtime.py' -v
+uv run --locked python -m unittest discover -s tests -p 'test_product_startup.py' -v
+uv run --locked python -m unittest discover -s tests -p 'test_product_config.py' -v
+uv run --locked python -m unittest discover -s tests -p 'test_product_tools.py' -v
+uv run --locked python -m unittest discover -s tests -p 'test_product_storage.py' -v
+uv run --locked python -m unittest discover -s tests -p 'test_product_windows.py' -v
 ```
 
-预期：离线提交用例 `OK`；Windows 组在实际环境验证提交句柄 / 占用 / 路径竞争和停树。能力缺失明确 skip 原因并保持对应 G1 项未通过，不能把 skip 当验收；不要求 OS 越界写拒绝。
+预期各 `OK` / 退出 0；Windows 关键能力 skip 不算通过。已有用例保护业务和安全契约；新增只补直连计数、客户端重建和管道断开这些旧代理用例不能覆盖的路径。类名 / 删除情况 / 环境 receipt 是一次性核对。实际 provider / Job / ASGI 证据单独记录，不复用旧代理探针的“通过”。
 
-## Task 3：任务调度、预算、配置与 Hermes 适配
+## 2026-10-17 批准与执行
 
-- [x] **Step 1：写任务状态 / 预算用例。** 相同 kind / 固定范围 / 版本 / 触发登记复用任务；仅未运行增量可合并；第 16 次生成返回有效结果成功，第 17 次不发出；重启不清计数；取消 queued 任务不启动进程；取消 running 任务等进程树停完才释放名额；M04 / M05 旧 episode 输入不能发布。
-- [x] **Step 2：实现任务状态和双名额调度。** 一个普通执行名额、一个当前轮筛选名额；查询在下一调度点优先于普通待办，不抢占正在运行者，同级登记顺序。持久 queued / running / validating / recovering / 终态；绑定固定输入、配置 / Prompt / 权限版本。只以实际提交 / 结果保存判成功，空结果可成功。
-- [x] **Step 3：实现受保护模型转发。** 每个请求检查任务授权、许可协议 / 模型 / 路由，发出前锁内持久占用额度；从配置取得真实 key，载荷只持有内部引用 / 任务 token。禁止任意 URL 代理、泄露授权头和模型内部推理。源连接失去授权时拒绝新请求；最后允许请求正常返回 / 校验，仍需新增请求才预算失败。控制层与子进程协议按 task_id 关联并验证大小 / 字段。
-- [x] **Step 4：接入独立 AIAgent 子进程。** `hermes.py` 唯一直接导入、创建 / 调用和关闭 AIAgent；业务模块只提供任务载荷和工具清单。使用普通独立任务子进程；程序不修改运行资源，HERMES_HOME 使用产品独立数据与任务临时状态，不执行个人 / 工作目录配置。维护带副本 / Shell，query 只读工具，筛选完全无工具；全部注册名由能力验证结果固定。
-- [x] **Step 5：实现配置校验和生效。** 沿 Design 的全部字段与初始值：调用 16、poll 1 秒、buffer 3、refresh 3、外扩 3600 秒 / 10 条。模型协议参数按支持范围验，非法保持旧版本并返回字段错误。新任务固定配置；poll / 周期下一判定生效且不清进度；工作路径扩大用于新任务，收紧立即注销授权、停止树后恢复。读配置遮蔽 key，Web 新输入可写 key，空的脱敏显示不能覆盖原 key。
-- [x] **Step 6：发布 P01 和执行历史。** 从批准文本创建 common.txt，将实际共用 Prompt、业务 Prompt、工具定义、输入 / 输出引用、计数 / 错误 / 恢复、当时配置脱敏版本入不可变历史；没有工作不调用模型，不使用无限 Agent 对话承载业务连续性。
-- [x] **Step 7：运行任务和配置组。**
+用户明确批准本次重写总 Plan 与八模块 Plan，授权完成既有代码重构与计划内新功能。需要用户决策或外部条件的事项集中写入 [待办](../../pending.md)，不阻止独立可实施步骤；保留既有修改，不包含远端写入授权。
 
-```powershell
-python -m unittest discover -s tests -p 'test_product_runtime.py' -v
-python -m unittest discover -s tests -p 'test_product_config.py' -v
-```
+## 2026-10-17 第一批重构证据
 
-预期：上述契约 `OK`，无效配置和恢复不重置预算；再复核 Task 1 真实工具 / 模型请求，mock 结果不能替代 G1。
+项目 uv 环境完成锁定安装，PM Python 3.14.7 / 固定 Hermes SHA 的 AIAgent 导入检查退出 0；产品环境与任务环境已拆开。FastAPI / Uvicorn 接管 HTTP，显式路由复用原业务；API / Web 以官方 TestClient 和 dependency_overrides 运行。旧 Handler、模型代理、HTTP 程序工具入口及任务 proxy token 已删除；请求历史脱敏转到执行适配。
 
-## Task 4：单例、本机接口和启动脚本
+SQLite 已接管任务、去重键 / 别名、依赖、attempt / 次数、提交清单和配置指针。原存储崩溃 / 冲突测试改走数据库；真实写锁超时测试验证未发送模型、停树可结束、业务不可读、重启恢复。离线迁移工具通过合成副本的完整备份、重复核验、预算保留、零新写入回退和新增 Hook 材料后拒绝回退；没有迁移真实数据。修复源读取中新建 Store 重入文件锁的死锁，现有纠错组复跑通过。NetworkX 替换手写邻接；Portalocker / pathvalidate / boltons 替换普通锁、路径词法和单文件保存，Loguru 记录白名单采集诊断。
 
-- [x] **Step 1：实现单例与启动锁。** 按数据根保存实例 ID / PID / 协议 / 地址 / 授权，启动前验证完整身份和 health，不能只认端口或 PID。后台选可用 loopback 端口，Hook / MCP 退出不关闭；Stop 先停止新任务、停树 / 恢复后退出。
-- [x] **Step 2：实现 HTTP 契约。** 用标准库线程 HTTP 保持 worker / 模型 I/O 不阻塞 health / 配置；绑定 `127.0.0.1`，验证本机授权、Host / Origin、体积和路由，固定返回 schema / 错误。实现 Design 八个基线路由，cancel 的 `202` 只表示正在处理；查询任务不存在 404、配置版本冲突 409。任意材料不拼成 Shell。
-- [x] **Step 3：实现启动接口。** 创建总 Plan 中定义的 `start.ps1` 动作和 `__main__` 模式：显式定位 Hermes 源码与已准备解释器、加入产品 src；检查不自动安装或激活下载。环境准备单独按 Task 1 文档执行，后台启动使用隐藏窗口 / 无窗口子进程，不启动 Hermes CLI 或重复 worker。
-- [x] **Step 4：写并运行 HTTP 契约测试。** 覆盖伪造 PID / 同端口其他进程、多入口竞争启动、服务恢复、未知路由、无授权 / 外部 Origin / 非法 Host、超大 body、health 不被慢任务阻塞、显式退出后下次重新启动。
+TaskPipe 采用标准库认证 AF_PIPE / send_bytes / recv_bytes；阻塞 accept / 认证由归任务 Job 的通信进程持有，公开 Process 终止 / join 提供有界回收，不遗弃等待线程。连接前、认证未完成、错误密钥、断开和正常往返已在实际 Windows 通过；跨 PM 主调用与父进程程序工具通过。实际 AIAgent 新探针七场景通过：screening 1、query 2、source 2、文件 / Shell 维护 3、503 恢复 3、第 16 次有效完成 16、第 17 次拒发 16。发现 SDK 将任意发送钩子异常包成连接错误而重试；窄 HTTPX send 适配在额度拒绝时返回本地 400，不发送请求，重跑通过。模型请求编码 / TLS / SSE / 解析 / 模型循环仍由原 SDK 执行。
 
-```powershell
-python -m unittest discover -s tests -p 'test_product_http.py' -v
-```
+当前完整产品组 178 tests / OK（39.739s）；Ruff、uv lock --check --offline、git diff --check 退出 0。新增 SDK 组 4 项与 IPC 组 3 项，旧 HTTP 代理用例移至新 SDK 契约覆盖；没有为删除名称写断言。证据在 .artifacts/after-direct-all.log、direct-hermes-probe.log、direct-hermes-results.json 和 probe_state_migration.py。尚未完成全部 M01 / G1：模型参数探针、父进程死亡 / 大消息等完整 IPC 窗口、剩余通用能力、真实模型与 Desktop / 搜索新组合仍需后续证据。没有 Commit / Push 或远端写入。
 
-预期：`OK`；真实后台启动后用脚本 `Check / Serve / Stop` 验证一实例和退出恢复。
+## 2026-10-17 第二批：原生框架、真实 stdio 与浏览器回归
 
-- [x] **Step 5：同步运行文档和离线 CI。** 记录经验证的准备 / 启动 / 检查 / 退出命令、源与数据边界、受支持组合；CI 增加标准库产品测试，不安装个人 Hermes / 模型密钥，不改现有触发器 / token 权限。需要 SDK 协议组时只按产品锁安装最小控制层依赖，Hermes 实机组保留本地证据。同步 Python / CI 规则从“无产品环境”到真实状态。
+FastAPI lifespan 使用 APScheduler，Uvicorn 实际监听后才发布 instance。忙扫描时的新任务唤醒丢失已先用回归复现，再借框架完成事件合并补唤醒；扫描间隔设 3600 秒仍及时执行，启动组 6 项通过。HTTPX 启动 / MCP 客户端、pydantic-settings 优先级与官方 TestClient 均经现有组验证。实际 AIAgent 七场景再次通过，43 个真实到达的合成 provider 请求同时核对 model / max_tokens / temperature / top_p / DeepSeek thinking；登记后改配置不改变已登记任务参数。完整 IPC 窗口、剩余字段模型 / Win32 / 日志与休眠仍未全部完成。
 
-## 测试必要性与一次性验证
+完整证据、收尾测试结果与范围见[总 Plan](../../plan.md)第二批执行记录；本地通过不代替 GitHub CI，未迁移真实数据或执行远端写入。
 
-| 永久组 | 保护的未来回归 | 一次性验证 |
-| --- | --- | --- |
-| 存储 / Win32 | 覆盖用户编辑、错误恢复、位置提前推进、链接绕过与未停止树继续写 | 当前 Windows 的普通进程树停止、实际占用和提交窗口 |
-| 任务 / 配置 | 同任务次数清零、末次请求被误中断、超额生成、配置失效、撤销不即时、查询抢占 | Hermes 内部 retry / 压缩真实路径、选定模型及单槽服务并发 |
-| HTTP | 假实例被复用、外部授权绕过、慢任务堵控制入口 | 固定 SDK / 环境安装与真实启动组合 |
+## 2026-10-17 恢复后第三批：Windows、管道与到期恢复
 
-现有 test_capture 和 Push Guard 未覆盖上述产品契约；产品测试使用临时数据与本机合成 provider。依赖数量、文件名、Prompt 全文相等和安装位置不做永久断言。
+Goal 恢复 active 后完成 pywin32 覆盖接口迁移；句柄相对打开 / rename、挂起恢复和精确 100ns FILETIME 保留为经实际探针确认的窄适配。库的日期类型损失末位精度，带 RootDirectory 的 rename 返回 WinError 87，原生方式成功；pywintypes.error 映射为原 OSError 契约。Windows 9、存储 23、采集 11 项通过。
 
-## 依赖、偏差与状态
+IPC 六项实际 Windows 组覆盖未连 / 未认证 / 不回复、双向阻塞写、父进程死亡及有界回收，不能只以 poll 冒充 accept / 认证截止。Store 嵌套 / 跨线程和进程死亡释放补齐，SQLite 状态组 9 项通过。调度组 7 项验证进程暂停跨截止只登记一次、新 request 使旧截止失效；真实物理休眠仍属单独验收。完整产品 192 tests / OK、实际 PM AIAgent 七场景 43 个合成请求通过，原模型参数 / 次数固定契约保留。
 
-前置 G0；Task 1 输出 G1。未固定的 MCP / 环境不是隐藏实现假设，重大新方案先同步 Design。当前对齐用户确认的 Design 修订 1，OS 写隔离延后；执行证据与批准范围写在本节。2026-10-13 用户授权按当前 Plan 开始实施，本 Plan 已批准；完成状态按 checkbox 与执行记录核对。
+证据与原生残余原因见[总 Plan](../../plan.md)第三批和 .artifacts/third-win32-gaps.json、ipc-complete-phases.log、third-scheduler-late.log。字段模型 / 工具 schema、日志整合、剩余故障窗口与接入仍未全部完成。
 
-当前范围（2026-10-14，用户确认）：OS 写隔离移至后续独立 Issue；保留副本、授权 / 计数、停树、冲突检查与程序写回。历史写隔离失败不再阻塞当前 G1，Step 6 提交窗口和 Step 7 环境 / 依赖冻结仍需证据。后续 Issue 尚未创建，MXC + stdio 候选不再等待批准。
+<a id="historical-execution"></a>
+
+## 重写前的执行记录（历史证据）
+
+以下保留原记录、日期和旧 Task / Step 编号，便于回查。旧完成比例、批准状态、解释器组合及转发探针仅描述当时实现；不作为本稿的执行指令或本轮验证结果。旧计划全文可从 Git 中重写前的版本回查。
 
 ### 2026-10-13：Task 1 开始执行
 

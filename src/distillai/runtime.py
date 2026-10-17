@@ -4,12 +4,12 @@ from contextlib import contextmanager, ExitStack
 import json
 import re
 from pathlib import Path
-import secrets
+import sqlite3
 import threading
 import time
 import uuid
 
-from .storage import atomic_json, ConflictError, _identifier, _hash, _relative
+from .storage import ConflictError, _identifier, _hash, _relative
 from .windows import canonical_directory, FileHandle, pinned_path
 
 
@@ -36,16 +36,21 @@ class Runtime:
         self._accepting = True
         self._wake = threading.Event()
         self._source_errors = {}
+        self.on_wake = None
+
+    def wake(self):
+        self._wake.set()
+        if self.on_wake is not None:
+            self.on_wake()
 
     def _save(self, task):
-        atomic_json(self.store._record_path("tasks", task["id"]), task)
+        self.store.save_task(task)
 
     def task(self, task_id):
         return self.store.read_task(task_id)
 
     def tasks(self):
-        return [task for path in sorted((self.store.home / "tasks").glob("*.json"))
-                if "kind" in (task := json.loads(path.read_text(encoding="utf-8")))]
+        return self.store.state.tasks()
 
     @staticmethod
     def _scope(scope):
@@ -98,10 +103,10 @@ class Runtime:
                     "config": self.config.snapshot(), "authorized": True,
                     "prompt_version": self.store.put_version(prompt.encode("utf-8")),
                     "commit_id": None, "result_version": None, "post_registered": False,
-                    "error": None, "cancel_reason": None, "token_hash": None}
+                    "error": None, "cancel_reason": None}
             self._authorize_scope(task)
             self._save(task)
-        self._wake.set()
+        self.wake()
         return task
 
     def register_increment(self, ref, *, scope=None, prompt="", trigger="material"):
@@ -137,7 +142,7 @@ class Runtime:
                 self._save(task)
                 self.store.event({"event": "queued_increment_merged", "task_id": task["id"],
                                   "before": previous, "after": task["input_version"]})
-                self._wake.set()
+                self.wake()
                 return task
             return self.register("episode", incoming, trigger, scope=scope, prompt=prompt)
 
@@ -243,6 +248,8 @@ class Runtime:
             yield
 
     def _live(self, task_id):
+        if self.store.state.failed:
+            raise CancelledError("Control database recovery is required")
         task = self.task(task_id)
         if task["status"] not in {"running", "validating"} or task["cancel_reason"]:
             raise CancelledError("Task is no longer active")
@@ -250,13 +257,11 @@ class Runtime:
         self._check_input(task)
         return task
 
-    def reserve_generation(self, task_id, token=None, *, attempt_id=None, request_version=None):
+    def reserve_generation(self, task_id, *, attempt_id=None, request_version=None):
         with self.store.locked():
             task = self._live(task_id)
             if task["status"] != "running":
                 raise CancelledError("Model execution has finished")
-            if token is not None and not secrets.compare_digest(task.get("token_hash") or "", _hash(token.encode())):
-                raise PermissionError("Invalid task token")
             limit = task["config"]["values"]["runtime"]["max_model_calls"]
             if task["model_calls"] >= limit:
                 task["budget_exhausted"] = True
@@ -282,20 +287,7 @@ class Runtime:
                 task["model_calls"] -= 1
                 self._save(task)
 
-    def issue_token(self, task_id):
-        with self.store.locked():
-            task = self._live(task_id)
-            token = secrets.token_urlsafe(32)
-            task["token_hash"] = _hash(token.encode())
-            self._save(task)
-            return token
 
-    def verify_token(self, task_id, token):
-        with self.store.locked():
-            task = self._live(task_id)
-            if task["status"] != "running" or not secrets.compare_digest(task.get("token_hash") or "", _hash(token.encode())):
-                raise PermissionError("Invalid task token")
-            return task
 
     def attach_job(self, task_id, job):
         with self.store.locked():
@@ -315,7 +307,7 @@ class Runtime:
     def dispatch(self):
         started = []
         with self.store.locked():
-            if not self._accepting:
+            if not self._accepting or self.store.state.failed:
                 return
             tasks = self.tasks()
             conflicts = [task["scope"] for task in tasks if task["status"] == "recovery_conflict" and task["scope"]]
@@ -409,19 +401,28 @@ class Runtime:
                             task["cancel_reason"] = str(exc)
                     self._save(task)
             except Exception as stop_error:
-                with self.store.locked():
-                    task = self.task(task_id)
-                    task["status"] = "recovering"
-                    task["error"] = {"code": type(stop_error).__name__}
-                    self._save(task)
+                if isinstance(exc, sqlite3.Error) or isinstance(stop_error, sqlite3.Error):
+                    self.store.state.failed = True
+                    self._accepting = False
+                else:
+                    with self.store.locked():
+                        task = self.task(task_id)
+                        task["status"] = "recovering"
+                        task["error"] = {"code": type(stop_error).__name__}
+                        self._save(task)
         finally:
             if release:
                 with self.store.locked():
-                    task = self.task(task_id)
-                    task["token_hash"] = None
-                    self._save(task)
-                    self._active.pop(task_id, None)
-            self._wake.set()
+                    try:
+                        task = self.task(task_id)
+                        if not self.store.state.failed:
+                            self._save(task)
+                    except sqlite3.Error:
+                        self.store.state.failed = True
+                        self._accepting = False
+                    finally:
+                        self._active.pop(task_id, None)
+            self.wake()
 
     def _validate_publication(self, task_id, result):
         task = self._live(task_id)
@@ -434,7 +435,6 @@ class Runtime:
             task["post_registered"] = True
         task["status"] = "succeeded"
         task["error"] = None
-        task["token_hash"] = None
         self._save(task)
 
     def _complete_pending(self, task):
@@ -472,7 +472,6 @@ class Runtime:
                 else:
                     task["status"] = "cancelled" if task["cancel_reason"] else "failed"
                 task["error"] = {"code": "interrupted"}
-                task["token_hash"] = None
                 self._save(task)
 
     def retry(self, task_id):
@@ -484,9 +483,8 @@ class Runtime:
             self._check_input(task)
             task["status"] = "queued"
             task["error"] = None
-            task["token_hash"] = None
             self._save(task)
-        self._wake.set()
+        self.wake()
 
     def cancel(self, task_id, reason):
         with self.store.locked():
@@ -497,7 +495,6 @@ class Runtime:
                 return task  # Finish committed post-registration rather than undoing a saved business result.
             task["cancel_reason"] = str(reason)
             task["authorized"] = False
-            task["token_hash"] = None
             task["status"] = "cancelled" if task["status"] == "queued" else "recovering"
             self._save(task)
         self._stop_tree(task_id)
@@ -509,7 +506,7 @@ class Runtime:
                 task["status"] = "recovery_conflict" if state == "recovery_conflict" else "cancelled"
                 self._save(task)
                 self._active.pop(task_id, None)
-        self._wake.set()
+        self.wake()
         return self.task(task_id)
 
     def update_config(self, expected_version, patch):
@@ -523,12 +520,11 @@ class Runtime:
                     self._authorize_scope(task)
                 except CancelledError:
                     task["authorized"] = False
-                    task["token_hash"] = None
                     self._save(task)
                     revoke.append(task["id"])
         for task_id in revoke:
             self.cancel(task_id, "workspace_permission_revoked")
-        self._wake.set()
+        self.wake()
         return updated
 
     def wait(self, task_id, timeout=5):
@@ -548,6 +544,16 @@ class Runtime:
             self._accepting = False
             active = list(self._active)
         for task_id in active:
-            self.cancel(task_id, "runtime_stopping")
+            if self.store.state.failed:
+                self._stop_tree(task_id)
+            else:
+                self.cancel(task_id, "runtime_stopping")
         for task_id in active:
-            self.wait(task_id)
+            if self.store.state.failed:
+                running = self._active.get(task_id)
+                if running is not None:
+                    running[1].join(15)
+                    if running[1].is_alive():
+                        raise TimeoutError("Control cleanup has not stopped")
+            else:
+                self.wait(task_id)

@@ -1,6 +1,8 @@
 # DistillAI
 
-项目已批准初版 Design 与 Plan，已开始实现 Windows / Hermes 运行基础与产品采集链路。
+项目已有初版实现。2026-10-16 按用户要求[重写总 Plan 与八模块 Plan](docs/spec/v0.1.0/4-initial-development/plan.md)：复用成熟依赖、移除模型 HTTP 转发、保留领域规则并补齐真实验收。2026-10-17 用户已批准新稿并授权持续实施；统一 Design 为修订 3，当前进度与证据见 Plan。
+
+当前计划已按用户意见纳入 SQLite 控制状态事务、Playwright 浏览器回归和 Ruff 静态检查，具体见总 Plan、M01-R6 与 M08-R3。SQLite 控制状态与离线迁移工具已实现并通过合成数据验证；产品依赖与 Chromium 已安装，真实浏览器回归已运行。未迁移真实用户数据。
 
 ## GitHub 与标准开发流程
 
@@ -41,7 +43,23 @@ uv lock --check --offline
 
 用户已将 OS 写隔离延至后续独立 Issue；当前普通任务拥有普通用户文件权限，保留副本、业务授权、预算、停树和冲突保护。程序不能保证拒绝或恢复自由命令的目录外直接写入。范围和实际证据见 [M01 执行记录](docs/spec/v0.1.0/4-initial-development/modules/01-runtime/plan.md#2026-10-15g1-冻结及存储实施)；后续 Issue 尚未创建。
 
-产品 Python 要求 3.13+，依赖由 `pyproject.toml` / `uv.lock` 固定为官方 MCP 2.0.0 及其传递依赖。当前实测共用 Hermes 官方 PM 应用环境；锁中包版本与该环境匹配，不往 PM 环境安装产品包。离线产品测试只需标准库与 `PYTHONPATH=src`，CI 同样执行这些契约组；MCP / 模型实测与 Desktop 集成另行验收。
+产品 Python 要求 3.13+。控制 / Web / MCP 使用项目 `.venv`，由 uv 按锁安装；Hermes 任务使用官方 PM 准备的固定解释器，不往 PM 环境安装产品框架。检查分别核对产品依赖与 Hermes SHA / PM 归属 / AIAgent 导入，不要求两个环境的全部依赖版本相同。`scripts/start.ps1` 使用产品解释器，`-HermesPython` 仅指定任务解释器。
+
+```powershell
+uv sync --locked --group dev --group browser
+$env:PYTHONPATH = 'src'
+uv run --locked --group dev ruff check src/distillai plugins/distillai scripts tests .codex/hooks
+uv run --locked python -m unittest discover -s tests -p 'test_product_*.py' -v
+```
+
+当前运行控制状态由 `state.sqlite3` 保存；任务 / 提交 JSON 和旧 `config.json` 不再是当前权威，私有配置历史仍在 `config/<version>.json`。新程序发现未迁移的旧数据根时明确拒绝启动。先停止后台、任务树和所有采集入口，等待在途 Hook 结束，再执行离线迁移；保持停采直到核验完成：
+
+```powershell
+uv run --locked python scripts/migrate_runtime_state.py --home <data-root> --confirm-writers-stopped
+```
+
+迁移备份为同目录旁的独立完整副本，脚本核对内容清单、数据库完整性、原调用次数及配置引用。只有控制数据库和全部内容（包括队列 / cursor）均未产生新写入时，才允许 `--rollback-backup <backup-root>` 恢复；有新写入须保留现状修复，不读取过期控制 JSON。新状态损坏时暂停业务读写，保留健康与停机入口；重启先恢复未完成发布，再开放业务。Desktop、真实模型语义与 CI 仍单独验收。
+
 
 ## 后台基础验证
 
@@ -79,7 +97,7 @@ M03 → M04 → M05 的真实 AIAgent 配本机合成 provider 已验证观察 /
 
 M05 校验实际用户来源、帮助、观察 / 假设引用和定性理解，保护知识正文 / 关系核查。M07 已接通固定版本上下文准备、两列表、只读语义查询、无工具筛选和 compact 选择快照。查询返回实际读到的记录版本，取消只停止该次调用；同文的两个独立调用各有关联。反馈尚未取得可信原始位置时保留待关联，不凭文本相同制造用户表现。
 
-`scripts/start.ps1 -Action Mcp` 使用已记录的 PM 解释器启动官方 stdio 服务，公开 query_context / submit_feedback；先通过 `-Action Serve` 启动后台。当前 Windows SDK 客户端关闭 stdio 会清理其进程树，MCP 自动冷启动未通过，因而后台未启动时明确返回 backend_not_started。退出 stdio 保留此前独立启动的后台，显式 `-Action Stop` 才请求停止。实际 Desktop 插件 MCP 注册 / 工具全名、Hook 注入、生命周期和反馈边界仍待 G2，当前不自动启用个人会话。
+`scripts/start.ps1 -Action Mcp` 使用产品项目解释器启动 FastMCP stdio 服务，公开 query_context / submit_feedback；先通过 `-Action Serve` 启动后台。实际 FastMCP PythonStdioTransport 已验证工具调用、严格输入、反馈幂等及独立后台在 stdio 退出后存活；MCP 自动冷启动在受限 Windows Job 中未通过，后台无法独立启动时明确返回 backend_not_started。退出 stdio 保留此前独立启动的后台，显式 `-Action Stop` 才请求停止。实际 Desktop 插件 MCP 注册 / 工具全名、Hook 注入、生命周期和反馈边界仍待 G2，当前不自动启用个人会话。
 
 实际 SDK / AIAgent 的准备、查询、筛选和取消探针合计 9 次本机合成模型请求，两次 compact 不增加生成。明确 episode 纠错与直接依赖等待状态同清单提交，M03 不编辑认知字段。查询旧判断另附当前等待状态；当前修订对应的 M05 成功后解除直接等待并触发开放会话准备，不增加材料计数。旧候选须经 M07 重新准备才能新选材，compact 保留既定选择。模型语义质量和真实 Desktop 仍待验收。
 
@@ -109,8 +127,13 @@ M05 校验实际用户来源、帮助、观察 / 假设引用和定性理解，�
 
 交流片段详情可载入同会话另一个已有片段，填写两者应归属的来源行及原因。`POST /v1/episode-corrections` 接收 `session_key, episode_refs, assignments, reason`，引用带加载时版本；完整保留原来源且同轮不拆分，不新增片段或跨会话搬动。修订后接续 M04 / M05。知识 / 关系详情中的“纠正关于我的判断”填写实际表现、帮助条件和原因；`POST /v1/cognition-corrections` 接收 `record_kind, record_id, expected_version, performance, help, reason`，使用独立 user_submission 来源，不伪造 episode。两个入口均返回 task_id，按实际提交确认保存；旧判断等待重新分析时明确提示。
 
-合成浏览器验证覆盖四入口、分页 / 空状态 / 筛选、未知记录重试、脚本标签文本显示、来源和历史版本、两个窗口的实际提交 / 冲突、延迟详情 / 配置保存不覆盖新输入、Tab / Shift-Tab / Enter，以及 390 像素窄屏无横向溢出。页面维护执行器为一次性合成探针，真实 AIAgent 提交链另用上述 11 请求探针验证；不引入只保护固定 DOM 或配色的永久前端测试。
+合成浏览器验证覆盖四入口、分页 / 空状态 / 筛选、未知记录重试、脚本标签文本显示、来源和历史版本、两个窗口的实际提交 / 冲突、延迟详情 / 配置保存不覆盖新输入、Tab / Shift-Tab / Enter，以及 390 像素窄屏无横向溢出。页面维护执行器为合成回调，真实 AIAgent 提交链另有独立探针。五项 Playwright 永久回归保护冲突 / 失败留输入、迟到详情 / 保存和文本安全；布局、固定 DOM 与配色不写像素基线。
 
-2026-10-16 最新进度为 **112 / 140 步**，两个解释器各 **160 项产品测试通过**。M01 运行基础和 M08 Web 的模块 Plan 已完成；整体仍在执行。新材料纠错链 12 次合成模型请求、真实 Tavily 外扩 → M04 → M07 → 用户编辑 14 次请求、SDK 查询 / 筛选 / compact / 取消 9 次请求均有独立证据。当前待办见[执行待办](docs/spec/v0.1.0/4-initial-development/pending.md)，证据和 checkbox 见[总 Plan](docs/spec/v0.1.0/4-initial-development/plan.md)。
+```powershell
+uv run --locked --group browser python -m playwright install chromium
+uv run --locked --group browser python -m unittest discover -s tests/browser -p 'test_*.py' -v
+```
+
+历史记录（重写前）：2026-10-16 为 **112 / 140 步**，两个解释器各 **160 项产品测试通过**。M01 运行基础和 M08 Web 的模块 Plan 已完成；整体仍在执行。新材料纠错链 12 次合成模型请求、真实 Tavily 外扩 → M04 → M07 → 用户编辑 14 次请求、SDK 查询 / 筛选 / compact / 取消 9 次请求均有独立证据。当前待办见[执行待办](docs/spec/v0.1.0/4-initial-development/pending.md)，证据和 checkbox 见[总 Plan](docs/spec/v0.1.0/4-initial-development/plan.md)。
 
 关联回查使用 `GET /v1/related?record_id=<id>` 或 `?episode_id=<id>`，沿同源认证 / 分页读取实际保存的知识、外扩、子图 / 两列表和本轮选材版本；模型文本中偶然出现 ID 不构成关联。选材仅准备、Hook 已输出和平台 / 助手采用分别展示。等待状态下可显式“按最新依据重新分析”：`POST /v1/reanalysis-requests` 接收 client_request_id、record_id、reason，创建最新固定依据的 M04 → M05 任务；同请求复用，不重置或覆盖原失败任务。

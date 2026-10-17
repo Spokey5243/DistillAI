@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from distillai.storage import ConflictError, Store
+from distillai.storage import ConflictError, Store, _relative
 
 
 @unittest.skipUnless(os.name == "nt", "Publication requires Windows handles")
@@ -59,6 +59,12 @@ class StorageTests(unittest.TestCase):
             self.store.publish(commit["id"], lambda: None)
         self.assertEqual((self.source / "a.txt").read_bytes(), b"user")
         self.assertNotEqual(self.store.read_commit(commit["id"])["status"], "committed")
+
+    def test_raw_relative_paths_cannot_hide_empty_or_dot_segments(self):
+        for value in ("a/./b", "a//b", "a/../b", "a/", "CON.txt", "x:stream", "a\\b", "/absolute"):
+            with self.subTest(path=value), self.assertRaises(ConflictError):
+                _relative(value)
+        self.assertEqual(_relative("合成/regular.txt"), Path("合成/regular.txt"))
 
     def test_new_file_collision_keeps_user_file(self):
         task_id, work = self.task({})

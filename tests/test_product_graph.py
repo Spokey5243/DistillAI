@@ -78,6 +78,18 @@ class GraphTests(unittest.TestCase):
         self.assertEqual(self.index.lookup("reference concept")["matches"][0]["id"], A)
         self.assertEqual(self.index.detail("knowledge", A, version=old["version"]), old)
 
+    def test_symmetric_self_loop_and_parallel_edges_are_returned_once(self):
+        self.write("relations", {**self.relation(R, "Self analogy"), "target_knowledge_id": A, "symmetric": True})
+        reverse = "6" * 32
+        self.write("relations", {**self.relation(reverse, "Reverse analogy"),
+            "source_knowledge_id": B, "target_knowledge_id": A, "symmetric": True})
+        self.index.rebuild()
+        for direction, expected in (("in", [R, reverse]), ("out", [R, S, reverse]), ("both", [R, S, reverse])):
+            result = self.index.neighbors(A, direction=direction)
+            self.assertEqual([ref["id"] for ref in result["knowledge_refs"]], [A, B])
+            self.assertEqual([ref["id"] for ref in result["relations"]], expected)
+        self.assertEqual([ref["id"] for ref in self.index.neighbors(B, direction="out")["relations"]], [reverse])
+
     def test_failed_rebuild_has_no_stale_graph_and_detail_stays_available(self):
         old = self.index.neighbors(A)
         with patch.object(self.store, "_scan", side_effect=OSError("synthetic failure")), self.assertRaises(OSError):

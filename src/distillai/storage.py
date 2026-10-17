@@ -2,10 +2,10 @@
 from contextlib import contextmanager, ExitStack
 import hashlib
 import json
-import msvcrt
 import os
 from pathlib import Path, PurePosixPath
 import re
+import sqlite3
 import tempfile
 import threading
 import uuid
@@ -24,14 +24,17 @@ def _identifier(value, length=32):
 
 
 def _relative(value):
-    parts = PurePosixPath(value).parts
-    if not parts or PurePosixPath(value).is_absolute() or "\\" in value:
+    from pathvalidate import validate_filename, ValidationError
+    if not isinstance(value, str) or "\\" in value:
         raise ConflictError("Invalid relative publication path")
-    for part in parts:
-        if part in (".", "..") or part.endswith((".", " ")) or any(ord(c) < 32 or c in ':<>"|?*' for c in part):
-            raise ConflictError("Invalid Windows publication path")
-        if re.fullmatch(r"(?i)(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?", part):
-            raise ConflictError("Device paths cannot be published")
+    parts = value.split("/")
+    if any(part in ("", ".", "..") for part in parts):
+        raise ConflictError("Invalid relative publication path")
+    try:
+        for part in parts:
+            validate_filename(part, platform="Windows")
+    except ValidationError:
+        raise ConflictError("Invalid Windows publication path") from None
     return Path(*parts)
 
 
@@ -46,17 +49,11 @@ def _in_scope(relative, allowed, *, ancestor=False):
 
 def atomic_json(path, record):
     """Caller holds the data-root lock across read/validate/write."""
+    from boltons.fileutils import atomic_save
     path = Path(path)
-    descriptor, name = tempfile.mkstemp(prefix=".save-", dir=path.parent)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
-            json.dump(record, stream, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
-            stream.write("\n")
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(name, path)
-    finally:
-        Path(name).unlink(missing_ok=True)
+    data = (json.dumps(record, ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "\n").encode("utf-8")
+    with atomic_save(str(path), part_file=".save-" + uuid.uuid4().hex) as stream:
+        stream.write(data)
 
 
 class Store:
@@ -65,28 +62,19 @@ class Store:
         for name in ("config", "tasks", "versions", "commits", "workspaces", "events"):
             (self.home / name).mkdir(parents=True, exist_ok=True)
         self._thread_lock = threading.RLock()
-        self._local = threading.local()
+        import portalocker
+        self._file_lock = portalocker.RLock(self.home / ".lock", mode="a+b", timeout=10)
+        from .state import State
+        if (self.home / "state.sqlite3").exists():
+            self.state = State(self.home)
+        else:
+            with self.locked():
+                self.state = State(self.home)
 
     @contextmanager
     def locked(self):
-        with self._thread_lock:
-            if getattr(self._local, "held", False):
-                yield
-                return
-            with (self.home / ".lock").open("a+b") as stream:
-                stream.seek(0, os.SEEK_END)
-                if not stream.tell():
-                    stream.write(b"\0")
-                    stream.flush()
-                stream.seek(0)
-                msvcrt.locking(stream.fileno(), msvcrt.LK_LOCK, 1)
-                self._local.held = True
-                try:
-                    yield
-                finally:
-                    self._local.held = False
-                    stream.seek(0)
-                    msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+        with self._thread_lock, self._file_lock:
+            yield
 
     def event(self, record):
         with self.locked(), (self.home / "events" / "program.jsonl").open("ab") as stream:
@@ -118,17 +106,17 @@ class Store:
             raise ConflictError("Immutable content version is damaged")
         return data
 
-    def _record_path(self, kind, identifier):
-        return self.home / kind / (_identifier(identifier) + ".json")
-
     def read_task(self, identifier):
-        return json.loads(self._record_path("tasks", identifier).read_text(encoding="utf-8"))
+        return self.state.read_task(_identifier(identifier))
+
+    def save_task(self, record):
+        self.state.save_task(record)
 
     def read_commit(self, identifier):
-        return json.loads(self._record_path("commits", identifier).read_text(encoding="utf-8"))
+        return self.state.read_commit(_identifier(identifier))
 
     def _save_commit(self, record):
-        atomic_json(self._record_path("commits", record["id"]), record)
+        self.state.save_commit(record)
 
     def _scan(self, root, copy_to=None, allowed=None):
         files, directories = {}, {}
@@ -172,6 +160,8 @@ class Store:
         except OSError as exc:
             raise ConflictError("Source directory cannot be identified safely") from exc
         private = [self.home / name for name in ("config", "tasks", "versions", "commits", "workspaces", "events")]
+        private.extend(self.home.parent.glob(self.home.name + ".migration-backup-*"))
+        private.extend(self.home.parent.glob(self.home.name + ".rollback-retired-*"))
         if source in self.home.parents or any(p == source or p in source.parents for p in private):
             raise ConflictError("Task source overlaps private runtime state")
         if allowed_paths is not None:
@@ -180,7 +170,8 @@ class Store:
             allowed_paths = [_relative(name).as_posix() for name in allowed_paths]
         if source == self.home:
             if allowed_paths is None or any(name.split("/")[0] in
-                    {"config", "config.json", "tasks", "versions", "commits", "workspaces", "events", ".lock", "codex", "hermes"}
+                    {"config", "config.json", "tasks", "versions", "commits", "workspaces", "events", ".lock", "codex", "hermes",
+                     "state.sqlite3", "state.sqlite3-journal", "state.sqlite3-wal", "state.sqlite3-shm"}
                     for name in allowed_paths):
                 raise ConflictError("The data root is not a whole-root task authorization")
         task_id = _identifier(task_id) if task_id is not None else uuid.uuid4().hex
@@ -192,13 +183,16 @@ class Store:
                 work_files, work_directories = self._scan(workspace)
             except OSError as exc:
                 raise ConflictError(str(exc)) from exc
-            previous = self.read_task(task_id) if self._record_path("tasks", task_id).exists() else {}
+            try:
+                previous = self.read_task(task_id)
+            except FileNotFoundError:
+                previous = {}
             task = {**previous, "id": task_id, "source": str(source), "workspace": str(workspace),
                     "allowed_paths": allowed_paths,
                     "baseline": files, "directories": directories,
                     "workspace_attributes": {name: info["attributes"] for name, info in work_files.items()},
                     "workspace_directory_attributes": {name: info["attributes"] for name, info in work_directories.items()}}
-            atomic_json(self._record_path("tasks", task_id), task)
+            self.save_task(task)
         return task
 
     def prepare(self, task_id):
@@ -238,7 +232,10 @@ class Store:
                               "backup": f".distillai-{commit_id}-{len(items)}.deleted" if before and not after else None})
             record = {"id": commit_id, "task_id": task_id, "source": task["source"],
                       "status": "prepared", "items": items}
-            self._save_commit(record)
+            with self.state.transaction() as connection:
+                self.state.save_commit(record, connection=connection)
+                task["commit_id"] = commit_id
+                self.state.save_task(task, connection=connection)
             return record
 
     def publish(self, commit_id, validate):
@@ -309,8 +306,12 @@ class Store:
                         raise ConflictError("Directory became a reparse point")
                     record["status"] = "committed"
                     self._save_commit(record)
-            except (OSError, ConflictError) as exc:
-                recovered = self.recover(commit_id)
+            except (OSError, ConflictError, sqlite3.Error) as exc:
+                try:
+                    recovered = self.recover(commit_id)
+                except sqlite3.Error:
+                    self.state.failed = True
+                    raise
                 raise ConflictError(f"Publication failed ({recovered['status']}): {exc}") from exc
             self._cleanup_backups(record)
             return record
@@ -332,7 +333,7 @@ class Store:
                         handle.remove()
                 except FileNotFoundError:
                     continue
-                except (OSError, ConflictError) as exc:
+                except (OSError, ConflictError, sqlite3.Error) as exc:
                     self.event({"commit_id": record["id"], "event": "cleanup_conflict", "path": item["path"],
                                 "error": type(exc).__name__})
 

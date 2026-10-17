@@ -7,8 +7,8 @@ import unittest
 import uuid
 
 from distillai.config import Config
-from distillai.runtime import BudgetError, CancelledError, Runtime
-from distillai.storage import atomic_json, ConflictError, Store
+from distillai.runtime import CancelledError, Runtime
+from distillai.storage import ConflictError, Store
 
 
 class RuntimeTests(unittest.TestCase):
@@ -217,32 +217,24 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(runtime.task(bad["id"])["status"], "failed")
         self.assertEqual(runtime.wait(good["id"])["status"], "succeeded")
 
-    def test_budget_and_token_cannot_be_used_after_executor_finishes(self):
-        tokens = []
-
+    def test_completed_executor_cannot_reserve_another_generation(self):
         def execute(task, control):
-            token = control.issue_token(task["id"])
-            tokens.append(token)
-            with self.assertRaises(PermissionError):
-                control.reserve_generation(task["id"], "invalid")
-            control.reserve_generation(task["id"], token)
+            control.reserve_generation(task["id"])
             return {}
 
         runtime = self.runtime(execute)
         task = self.submit(runtime)
         runtime.dispatch()
-        completed = runtime.wait(task["id"])
-        self.assertEqual(completed["model_calls"], 1)
-        self.assertIsNone(completed["token_hash"])
-        with self.assertRaises(Exception):
-            runtime.reserve_generation(task["id"], tokens[0])
+        self.assertEqual(runtime.wait(task["id"])["model_calls"], 1)
+        with self.assertRaises(CancelledError):
+            runtime.reserve_generation(task["id"])
 
     def test_recovery_conflict_blocks_overlapping_writes_but_allows_read_only_query(self):
         started = []
         runtime = self.runtime(lambda task, control: started.append(task["id"]) or {})
         old = self.submit(runtime, scope={"root": str(self.workspace)}, trigger="old")
         old["status"] = "recovery_conflict"
-        atomic_json(self.store._record_path("tasks", old["id"]), old)
+        self.store.save_task(old)
         write = self.submit(runtime, scope={"root": str(self.workspace)}, trigger="new")
         query = self.submit(runtime, kind="query")
         runtime.dispatch()
