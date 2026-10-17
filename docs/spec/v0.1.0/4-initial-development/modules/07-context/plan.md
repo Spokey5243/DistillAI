@@ -58,6 +58,10 @@ uv run --locked python -m unittest discover -s tests -p 'test_product_feedback.p
 
 完整证据、收尾测试结果与范围见[总 Plan](../../plan.md)第二批执行记录；本地通过不代替 GitHub CI，未迁移真实数据或执行远端写入。
 
+## 2026-10-17 恢复后第四批：共享结构与工具 schema
+
+上下文、名称子图、MCP 摘要、注入候选、查询结果与筛选结果接入严格模型，候选 ID 工具 schema 由本模块定义生成。实际版本 / 候选修订 / 重分析依赖和程序准备前后相等判断继续保留。完整产品 192 项及真实 Tavily→知识→M07 3 次准备的实际 PM 链路通过，工具 / HTTP 请求清点继续；Desktop 工具全名、冷启动、compact 交付与语义仍未全验。见[总 Plan](../../plan.md)。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

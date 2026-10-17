@@ -19,23 +19,31 @@ class SourceError(ValueError):
 
 Identifier = Annotated[str, Field(pattern=r"^[0-9a-f]{32}$")]
 Version = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+SessionKey = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]+$")]
+NonblankText = Annotated[str, Field(pattern=r"\S")]
 
 
-@with_config(ConfigDict(strict=True, extra="forbid"))
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
 class RecordRef(TypedDict):
     id: Identifier
     version: Version
 
 
-@with_config(ConfigDict(strict=True, extra="forbid"))
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class DraftRecordRef(TypedDict):
+    id: Identifier
+    version: NotRequired[Version]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
 class QueueRef(TypedDict):
     connector: Literal["codex"]
-    session_key: Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]+$")]
+    session_key: SessionKey
     line_start: Annotated[int, Field(ge=1)]
     line_end: Annotated[int, Field(ge=1)]
 
 
-@with_config(ConfigDict(strict=True, extra="forbid"))
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
 class VersionedRef(TypedDict):
     source_kind: Literal["external", "user_submission"]
     id: Identifier
@@ -44,10 +52,13 @@ class VersionedRef(TypedDict):
 
 SourceRef = QueueRef | VersionedRef
 QUEUE_REF = TypeAdapter(QueueRef)
+QUEUE_REFS = TypeAdapter(list[QueueRef])
 VERSIONED_REF = TypeAdapter(VersionedRef)
+SOURCE_REFS = TypeAdapter(list[SourceRef])
+DRAFT_RECORD_REFS = TypeAdapter(list[DraftRecordRef])
 
 
-@with_config(ConfigDict(strict=True, extra="forbid"))
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
 class QueueEntry(TypedDict):
     role: Literal["user", "assistant", "tool"]
     text: Annotated[str, Field(min_length=1)]

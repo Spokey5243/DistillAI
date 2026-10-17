@@ -4,14 +4,113 @@ import json
 from pathlib import Path
 import re
 import uuid
+from typing import Any, Literal, NotRequired, TypedDict
 
+from pydantic import ConfigDict, TypeAdapter, with_config
 from .knowledge import KnowledgeIndex
-from .sources import queue_path, read_source, scan_queue, contains, now
+from .sources import DraftRecordRef, Identifier, NonblankText, RecordRef, SessionKey, SourceRef, Version, queue_path, read_source, scan_queue, contains, now
 from .storage import atomic_json, ConflictError, _identifier, _hash
 
 
 KINDS = {"knowledge": "knowledge", "relations": "relation", "hypotheses": "hypothesis",
          "episodes": "episode", "expansions": "expansion"}
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class AllocationArgs(TypedDict):
+    record_kind: Literal["candidate"]
+
+
+ALLOCATION_ARGS = TypeAdapter(AllocationArgs)
+
+
+class NamedRecord(RecordRef):
+    name: NonblankText
+    source_knowledge_id: NotRequired[Identifier]
+    target_knowledge_id: NotRequired[Identifier]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class Subgraph(TypedDict):
+    knowledge_refs: list[NamedRecord]
+    relations: list[NamedRecord]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class ContextSummary(TypedDict):
+    record_refs: list[RecordRef]
+    summary: NonblankText
+    source_refs: list[SourceRef]
+    status: NonblankText
+    reason: NonblankText
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class Candidate(TypedDict):
+    id: Identifier
+    revision: int
+    record_refs: list[RecordRef]
+    text: NonblankText
+    conditions: NonblankText
+    rationale: NonblankText
+    reanalysis_versions: NotRequired[dict[Identifier, Version]]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class ContextRecord(TypedDict):
+    id: Identifier
+    session_key: SessionKey
+    episode_ref: RecordRef
+    record_refs: list[RecordRef]
+    subgraph: Subgraph
+    mcp_context: list[ContextSummary]
+    injection_candidates: list[Candidate]
+    material_updates: int
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class ContextResult(TypedDict):
+    context_ref: DraftRecordRef
+    reason: NonblankText
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class QueryItem(TypedDict):
+    record_kind: Literal["knowledge", "relation", "hypothesis", "episode", "expansion"]
+    record_ref: RecordRef
+
+
+class PreparedQueryItem(QueryItem):
+    record: dict[str, Any]
+    source_refs: list[SourceRef]
+    user_model_fields: list[str]
+    reanalysis: list[dict[str, Any]]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class QueryResult(TypedDict):
+    status: Literal["ok", "no_match"]
+    items: list[QueryItem]
+    source_refs: list[SourceRef]
+    reason: NonblankText
+
+
+class PreparedQueryResult(QueryResult):
+    items: list[PreparedQueryItem]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class SelectionResult(TypedDict):
+    selected_ids: list[str]
+    reason: NonblankText
+    selected: NotRequired[list[Candidate]]
+
+
+CONTEXT_RECORD = TypeAdapter(ContextRecord)
+CONTEXT_RESULT = TypeAdapter(ContextResult)
+QUERY_RESULT = TypeAdapter(QueryResult)
+PREPARED_QUERY_RESULT = TypeAdapter(PreparedQueryResult)
+SELECTION_RESULT = TypeAdapter(SelectionResult)
 
 
 def _invocation(runtime, identifier):
@@ -226,12 +325,8 @@ def validate_task(runtime, task, result):
     if task["kind"] == "screening":
         if task["scope"] is not None:
             raise ValueError("Selection must be read only")
-        if result is not None and (not isinstance(result, dict)
-                or set(result) not in ({"selected_ids", "reason"}, {"selected_ids", "reason", "selected"})
-                or not isinstance(result.get("selected_ids"), list)
-                or any(not isinstance(item, str) for item in result["selected_ids"])
-                or not isinstance(result.get("reason"), str) or not result["reason"].strip()):
-            raise ValueError("Invalid selection result")
+        if result is not None:
+            SELECTION_RESULT.validate_python(result)
         if result is not None and "selected" in result and result != task.get("selection_prepared"):
             raise ValueError("Program-prepared selection changed")
         return
@@ -241,19 +336,13 @@ def validate_task(runtime, task, result):
         queue_path(runtime.store.home, task["inputs"]["session_key"])
         _identifier(task["inputs"]["invocation_id"])
         return
-    if (not isinstance(result, dict) or set(result) != {"status", "items", "source_refs", "reason"}
-            or result["status"] not in {"ok", "no_match"} or not isinstance(result["items"], list)
-            or not isinstance(result["source_refs"], list) or not isinstance(result["reason"], str)
-            or not result["reason"].strip() or (result["status"] == "no_match") != (not result["items"])):
+    (PREPARED_QUERY_RESULT if task.get("query_prepared") else QUERY_RESULT).validate_python(result)
+    if (result["status"] == "no_match") != (not result["items"]):
         raise ValueError("Invalid query output")
     inputs = json.loads(runtime.store.read_version(task["execution_input_version"]))
     seen, permitted_sources = set(), list(task.get("read_source_refs", []))
     for item in result["items"]:
-        if not isinstance(item, dict) or set(item) != ({"record_kind", "record_ref", "record", "source_refs", "user_model_fields", "reanalysis"} if task.get("query_prepared") else {"record_kind", "record_ref"}):
-            raise ValueError("Query returns record references, not model-created summaries")
         ref = item["record_ref"]
-        if not isinstance(ref, dict) or set(ref) != {"id", "version"}:
-            raise ValueError("Invalid query record reference")
         read = {**ref, "record_kind": item["record_kind"]}
         key = (item["record_kind"], ref["id"], ref["version"])
         if read not in task.get("read_record_refs", []) or key in seen:
@@ -418,8 +507,7 @@ def _validate_prepare(runtime, task, result):
     if result is None:
         runtime._check_input(task)
         return
-    if not isinstance(result, dict) or set(result) != {"context_ref", "reason"} or not isinstance(result["reason"], str) or not result["reason"].strip():
-        raise ValueError("Context preparation returns context_ref and reason")
+    CONTEXT_RESULT.validate_python(result)
     inputs = json.loads(runtime.store.read_version(task["execution_input_version"]))
     key = inputs["session_key"]
     expected = "contexts/" + key + ".json"
@@ -427,6 +515,7 @@ def _validate_prepare(runtime, task, result):
     if files != [expected]:
         raise ValueError("Preparation may only write the session context")
     record = json.loads((Path(task["workspace"]) / expected).read_text(encoding="utf-8"))
+    CONTEXT_RECORD.validate_python(record)
     if set(record) != set(inputs["context_template"]) or any(record[name] != inputs["context_template"][name]
             for name in ("id", "session_key", "episode_ref", "material_updates")):
         raise ValueError("Context identity and material count belong to the program")
@@ -439,34 +528,22 @@ def _validate_prepare(runtime, task, result):
     if any((ref["id"], ref["version"]) not in current_versions for ref in record["record_refs"]):
         raise ValueError("Context dependency changed before publication")
     graph = record["subgraph"]
-    if not isinstance(graph, dict) or set(graph) != {"knowledge_refs", "relations"}:
-        raise ValueError("Subgraph contains names and connections only")
     for field, kind in (("knowledge_refs", "knowledge"), ("relations", "relation")):
-        if not isinstance(graph[field], list):
-            raise ValueError("Subgraph entries must be lists")
         for item in graph[field]:
             if item not in inputs["name_graph"] or not any(value["id"] == item["id"] and value["record_kind"] == kind for value in inputs["records"]):
                 raise ValueError("Subgraph must preserve actual names and endpoints")
             if {"id": item["id"], "version": item["version"]} not in record["record_refs"]:
                 raise ValueError("Subgraph dependencies must remain in prepared record references")
-    if not isinstance(record["mcp_context"], list) or not isinstance(record["injection_candidates"], list):
-        raise ValueError("Two context lists are required")
     for item in record["mcp_context"]:
-        if (not isinstance(item, dict) or set(item) != {"record_refs", "summary", "source_refs", "status", "reason"}
-                or any(not isinstance(item[name], str) or not item[name].strip() for name in ("summary", "status", "reason"))):
-            raise ValueError("MCP context retains summary, sources and status")
         refs(item["record_refs"])
         if not item["record_refs"] or any(ref not in record["record_refs"] for ref in item["record_refs"]):
             raise ValueError("MCP summaries need actual prepared record references")
-        if not isinstance(item["source_refs"], list) or any(ref not in inputs["source_refs"] for ref in item["source_refs"]):
+        if any(ref not in inputs["source_refs"] for ref in item["source_refs"]):
             raise ValueError("Context source must have been available")
     previous = {item["id"]: item for item in (inputs["previous_context"] or {}).get("injection_candidates", [])}
     seen = set()
     for item in record["injection_candidates"]:
-        if (not isinstance(item, dict) or set(item) != ({"id", "revision", "record_refs", "text", "conditions", "rationale"}
-                | ({"reanalysis_versions"} if "reanalysis_versions" in item else set()))
-                or any(not isinstance(item[name], str) or not item[name].strip() for name in ("text", "conditions", "rationale"))
-                or type(item["revision"]) is not int or item["id"] in seen):
+        if item["id"] in seen:
             raise ValueError("Invalid candidate identity, text, conditions or rationale")
         identifier = _identifier(item["id"])
         seen.add(identifier)

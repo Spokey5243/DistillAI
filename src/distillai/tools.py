@@ -1,5 +1,27 @@
 """Read-only task snapshot tools; business modules prepare and validate their snapshots."""
 import json
+from typing import TypedDict
+
+from pydantic import ConfigDict, TypeAdapter, ValidationError, with_config
+
+from .sources import NonblankText, SourceRef
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True,
+    json_schema_extra={"anyOf": [{"required": ["id"]}, {"required": ["name"]}]}))
+class QueryRecordsArgs(TypedDict, total=False):
+    id: NonblankText
+    name: NonblankText
+    version: NonblankText
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class ReadSourceArgs(TypedDict):
+    ref: SourceRef
+
+
+QUERY_RECORDS_ARGS = TypeAdapter(QueryRecordsArgs)
+READ_SOURCE_ARGS = TypeAdapter(ReadSourceArgs)
 
 
 def register_read_tools(registry, inputs, *, on_records=None, on_sources=None, on_missing_source=None):
@@ -8,8 +30,11 @@ def register_read_tools(registry, inputs, *, on_records=None, on_sources=None, o
     sources = inputs.get("sources", [])
     if records:
         def query_records(args, **kwargs):
-            if not isinstance(args, dict) or not {"id", "name"}.intersection(args) or set(args) - {"id", "name", "version"} or any(
-                    not isinstance(value, str) or not value.strip() for value in args.values()):
+            try:
+                QUERY_RECORDS_ARGS.validate_python(args)
+            except ValidationError:
+                return json.dumps({"error": {"code": "invalid_query"}})
+            if not {"id", "name"}.intersection(args):
                 return json.dumps({"error": {"code": "invalid_query"}})
             matches = []
             for item in records:
@@ -28,14 +53,16 @@ def register_read_tools(registry, inputs, *, on_records=None, on_sources=None, o
 
         registry.register(name="query_records", toolset="distillai_read", handler=query_records,
             schema={"name": "query_records", "description": "Read frozen records by exact ID or name/alias.",
-                    "parameters": {"type": "object", "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "version": {"type": "string"}},
-                                   "anyOf": [{"required": ["id"]}, {"required": ["name"]}], "additionalProperties": False}},
+                    "parameters": QUERY_RECORDS_ARGS.json_schema()},
             check_fn=lambda: True)
         names.add("query_records")
     if sources:
         def read_source(args, **kwargs):
-            if not isinstance(args, dict) or set(args) != {"ref"}:
-                return json.dumps({"error": {"code": "invalid_source_query"}})
+            try:
+                READ_SOURCE_ARGS.validate_python(args)
+            except ValidationError as error:
+                code = "invalid_source_query" if any(len(item["loc"]) <= 1 for item in error.errors(include_input=False)) else "source_not_in_task_snapshot"
+                return json.dumps({"error": {"code": code}})
             matches = [item for item in sources if item["ref"] == args.get("ref")]
             if not matches and on_missing_source is not None:
                 matches = [on_missing_source(args)]
@@ -45,78 +72,65 @@ def register_read_tools(registry, inputs, *, on_records=None, on_sources=None, o
 
         registry.register(name="read_source", toolset="distillai_read", handler=read_source,
             schema={"name": "read_source", "description": "Read an exact source reference frozen for this task.",
-                    "parameters": {"type": "object", "properties": {"ref": {"type": "object"}},
-                                   "required": ["ref"], "additionalProperties": False}},
+                    "parameters": READ_SOURCE_ARGS.json_schema()},
             check_fn=lambda: True)
         names.add("read_source")
     return names
 
 
 def register_episode_tools(registry, evaluate, revise=None):
+    from .episode import BOUNDARY_ARGS, REVISION_ARGS
     def handler(args, **kwargs):
         return json.dumps(evaluate(args), ensure_ascii=False)
 
     registry.register(name="evaluate_episode_boundary", toolset="distillai_episode", handler=handler,
         schema={"name": "evaluate_episode_boundary", "description": "Validate fixed episode/turn sources and original quotes; compute K/S. Does not publish files or consume a generation.",
-                "parameters": {"type": "object", "properties": {
-                    "episode_ref": {"type": "object"}, "episode_keywords": {"type": "array", "items": {"type": "string"}, "maxItems": 5},
-                    "episode_source_refs": {"type": "array", "items": {"type": "object"}},
-                    "episode_basis": {"type": "array", "items": {"type": "object"}},
-                    "candidates": {"type": "array", "items": {"type": "object", "properties": {
-                        "source_refs": {"type": "array", "items": {"type": "object"}}, "keywords": {"type": "array", "items": {"type": "string"}, "maxItems": 5},
-                        "C": {"type": "integer", "minimum": 0, "maximum": 4}, "basis": {"type": "array", "items": {"type": "object"}},
-                        "reason": {"type": "string"}, "group": {"type": "string"}},
-                        "required": ["source_refs", "keywords", "C", "basis", "reason", "group"], "additionalProperties": False}}},
-                    "required": ["episode_ref", "episode_keywords", "episode_source_refs", "episode_basis", "candidates"], "additionalProperties": False}},
+                "parameters": BOUNDARY_ARGS.json_schema()},
         check_fn=lambda: True)
     names = {"evaluate_episode_boundary"}
     if revise is not None:
         registry.register(name="evaluate_episode_revision", toolset="distillai_episode",
             handler=lambda args, **kwargs: json.dumps(revise(args), ensure_ascii=False),
             schema={"name": "evaluate_episode_revision", "description": "Check directly affected historical assignments against fixed record versions and actual new-source quotes. Does not judge semantic correctness or publish records.",
-                "parameters": {"type": "object", "properties": {"session_key": {"type": "string"},
-                    "episode_refs": {"type": "array", "items": {"type": "object"}}, "assignments": {"type": "array", "items": {"type": "object"}},
-                    "reason": {"type": "string"}, "basis": {"type": "array", "items": {"type": "object"}}},
-                    "required": ["session_key", "episode_refs", "assignments", "reason", "basis"], "additionalProperties": False}}, check_fn=lambda: True)
+                "parameters": REVISION_ARGS.json_schema()}, check_fn=lambda: True)
         names.add("evaluate_episode_revision")
     return names
 
 
 def register_knowledge_tools(registry, allocate):
+    from .knowledge import ALLOCATION_ARGS
     registry.register(name="new_record_id", toolset="distillai_knowledge",
         handler=lambda args, **kwargs: json.dumps(allocate(args)),
         schema={"name": "new_record_id", "description": "Allocate a new stable record ID for this maintenance task; reuse existing IDs for existing concepts or relations.",
-                "parameters": {"type": "object", "properties": {"record_kind": {"type": "string", "enum": ["knowledge", "relation"]}},
-                               "required": ["record_kind"], "additionalProperties": False}}, check_fn=lambda: True)
+                "parameters": ALLOCATION_ARGS.json_schema()}, check_fn=lambda: True)
     return {"new_record_id"}
 
 
 def register_cognition_tools(registry, allocate):
+    from .cognition import ALLOCATION_ARGS
     registry.register(name="new_record_id", toolset="distillai_cognition",
         handler=lambda args, **kwargs: json.dumps(allocate(args)),
         schema={"name": "new_record_id", "description": "Allocate a hypothesis ID, or get the reusable observation ID for original user source_refs. Assistant context does not create another performance.",
-                "parameters": {"type": "object", "properties": {"record_kind": {"type": "string", "enum": ["observation", "hypothesis"]},
-                    "source_refs": {"type": "array", "items": {"type": "object"}}},
-                    "required": ["record_kind"], "additionalProperties": False}}, check_fn=lambda: True)
+                "parameters": ALLOCATION_ARGS.json_schema()}, check_fn=lambda: True)
     return {"new_record_id"}
 
 
 def register_context_tools(registry, allocate):
+    from .context import ALLOCATION_ARGS
     registry.register(name="new_record_id", toolset="distillai_context",
         handler=lambda args, **kwargs: json.dumps(allocate(args)),
         schema={"name": "new_record_id", "description": "Allocate an ID only for a new injection candidate. Reuse existing candidate IDs; start new revision at zero and retain existing revision for the program to update.",
-                "parameters": {"type": "object", "properties": {"record_kind": {"type": "string", "enum": ["candidate"]}},
-                               "required": ["record_kind"], "additionalProperties": False}}, check_fn=lambda: True)
+                "parameters": ALLOCATION_ARGS.json_schema()}, check_fn=lambda: True)
     return {"new_record_id"}
 
 
 def register_expansion_tools(registry, request):
-    for name, field, description in (("web_search", "query", "Find candidate sources. Search snippets are not read evidence."),
-                                     ("fetch_page", "url", "Read a public page excerpt and retain its actual external source reference.")):
+    from .expansion import SEARCH_ARGS, FETCH_ARGS
+    for name, adapter, description in (("web_search", SEARCH_ARGS, "Find candidate sources. Search snippets are not read evidence."),
+                                     ("fetch_page", FETCH_ARGS, "Read a public page excerpt and retain its actual external source reference.")):
         registry.register(name=name, toolset="distillai_expansion",
             handler=lambda args, tool=name, **kwargs: json.dumps(request(tool, args), ensure_ascii=False),
             schema={"name": name, "description": description,
-                    "parameters": {"type": "object", "properties": {field: {"type": "string"}},
-                                   "required": [field], "additionalProperties": False}}, check_fn=lambda: True,
+                    "parameters": adapter.json_schema()}, check_fn=lambda: True,
             override=True)  # Each task has its own registry; replace Hermes' built-in web_search with the controller route.
     return {"web_search", "fetch_page"}

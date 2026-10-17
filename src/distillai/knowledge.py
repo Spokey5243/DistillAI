@@ -3,10 +3,91 @@ from copy import deepcopy
 import json
 from pathlib import Path
 import uuid
+from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
-from .sources import read_source, contains, record_submission
+from pydantic import ConfigDict, Field, TypeAdapter, with_config
+from .sources import DraftRecordRef, Identifier, NonblankText, SourceRef, SOURCE_REFS, Version, read_source, contains, record_submission
 from .storage import _hash, _identifier, ConflictError, atomic_json
 from .windows import FileHandle, pinned_path
+
+
+RecordKind = Literal["knowledge", "relation"]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class AllocationArgs(TypedDict):
+    record_kind: RecordKind
+
+
+ALLOCATION_ARGS = TypeAdapter(AllocationArgs)
+RECORD_KIND = TypeAdapter(RecordKind)
+
+
+# Content is an open document map; named metadata records retain closed field sets.
+@with_config(ConfigDict(strict=True, extra="allow", hide_input_in_errors=True))
+class KnowledgeContent(TypedDict):
+    summary: NonblankText
+    source_refs: Annotated[list[SourceRef], Field(min_length=1)]
+
+
+@with_config(ConfigDict(strict=True, extra="allow", hide_input_in_errors=True))
+class RelationContent(TypedDict):
+    statement: NonblankText
+    source_refs: Annotated[list[SourceRef], Field(min_length=1)]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class RecordFields(TypedDict):
+    id: Identifier
+    name: NonblankText
+    aliases: NotRequired[list[NonblankText]]
+    provenance: NotRequired[dict[str, Any]]
+    changes: NotRequired[list[Any]]
+    # M04 preserves the user-model payload; M05 validates its owned structure.
+    observations: NotRequired[Any]
+    hypotheses: NotRequired[Any]
+    cognition: NotRequired[Any]
+    hypothesis_refs: NotRequired[Any]
+
+
+class KnowledgeRecord(RecordFields):
+    content: KnowledgeContent
+    relations: NotRequired[list[Identifier]]
+
+
+class RelationRecord(RecordFields):
+    content: RelationContent
+    source_knowledge_id: Identifier
+    target_knowledge_id: Identifier
+    kind: Literal["knowledge_relation", "user_association"]
+    relation_type: NonblankText
+    direction_semantics: NonblankText
+    record_status: NotRequired[Literal["active", "inactive"]]
+    symmetric: NotRequired[bool]
+    analogy: NotRequired[Any]
+    assessment: NotRequired[Any]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class EditArgs(TypedDict):
+    record_kind: RecordKind
+    record_id: Identifier
+    expected_version: Version
+    changes: Annotated[dict[str, Any], Field(min_length=1)]
+    reason: NonblankText
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class MaintenanceResult(TypedDict):
+    knowledge_refs: list[DraftRecordRef]
+    relation_refs: list[DraftRecordRef]
+    reason: NonblankText
+
+
+KNOWLEDGE_RECORD = TypeAdapter(KnowledgeRecord)
+RELATION_RECORD = TypeAdapter(RelationRecord)
+EDIT_ARGS = TypeAdapter(EditArgs)
+MAINTENANCE_RESULT = TypeAdapter(MaintenanceResult)
 
 
 class IndexNotReady(RuntimeError):
@@ -21,8 +102,7 @@ def _source_refs(store, value):
     if isinstance(value, dict):
         for name, child in value.items():
             if name in {"source_refs", "basis_refs", "external_evidence_refs"}:
-                if not isinstance(child, list):
-                    raise ValueError("Source references must be lists")
+                SOURCE_REFS.validate_python(child, strict=True)
                 for ref in child:
                     read_source(store.home, ref)
             else:
@@ -37,23 +117,10 @@ def validate_collection(store, knowledge, relations, *, baseline=None):
     for kind, records in (("knowledge", knowledge), ("relations", relations)):
         for identifier, record in records.items():
             _identifier(identifier)
-            if not isinstance(record, dict) or record.get("id") != identifier or not _text(record.get("name")):
+            (KNOWLEDGE_RECORD if kind == "knowledge" else RELATION_RECORD).validate_python(record)
+            if record["id"] != identifier:
                 raise ValueError("Record ID, filename and name must agree")
-            common = {"id", "name", "aliases", "content", "provenance", "observations", "hypotheses", "cognition", "hypothesis_refs", "changes"}
-            allowed = common | ({"relations"} if kind == "knowledge" else {
-                "source_knowledge_id", "target_knowledge_id", "kind", "relation_type", "direction_semantics", "record_status", "analogy", "assessment", "symmetric"})
-            if set(record) - allowed:
-                raise ValueError("Unknown record fields")
-            content = record.get("content")
-            field = "summary" if kind == "knowledge" else "statement"
-            if not isinstance(content, dict) or not _text(content.get(field)) or not content.get("source_refs"):
-                raise ValueError("Content and actual source references are required")
-            aliases = record.get("aliases", [])
-            if not isinstance(aliases, list) or any(not _text(alias) for alias in aliases):
-                raise ValueError("Aliases must be nonempty strings")
             status = record.get("record_status", "active")
-            if status not in ("active", "inactive"):
-                raise ValueError("Invalid record status")
             if status == "active":
                 name = record["name"].strip().casefold()
                 if name in names:
@@ -61,16 +128,9 @@ def validate_collection(store, knowledge, relations, *, baseline=None):
                 names[name] = identifier
             _source_refs(store, record)
             if kind == "relations":
-                if record.get("kind") not in ("knowledge_relation", "user_association"):
-                    raise ValueError("Invalid relation kind")
-                if not _text(record.get("relation_type")) or not _text(record.get("direction_semantics")):
-                    raise ValueError("Relation type and direction semantics are required")
                 for endpoint in ("source_knowledge_id", "target_knowledge_id"):
-                    _identifier(record.get(endpoint))
                     if record[endpoint] not in knowledge:
                         raise ValueError("Relation endpoint is missing from the resulting collection")
-                if "symmetric" in record and type(record["symmetric"]) is not bool:
-                    raise ValueError("Symmetric must be a boolean")
             if baseline is not None:
                 previous = baseline.get(kind, {}).get(identifier, {})
                 for field in ("observations", "hypotheses", "cognition", "hypothesis_refs"):
@@ -80,19 +140,17 @@ def validate_collection(store, knowledge, relations, *, baseline=None):
                     elif record.get(field) not in (None, [], {}):
                         raise ValueError("Knowledge maintenance cannot create user-model evidence or judgments")
                 old_provenance, new_provenance = previous.get("provenance", {}), record.get("provenance", {})
-                if not isinstance(new_provenance, dict):
-                    raise ValueError("Provenance must be an object")
                 owned = lambda key: key.startswith(("cognition_", "observation_", "hypothesis_"))
                 if ({name: value for name, value in old_provenance.items() if owned(name)}
                         != {name: value for name, value in new_provenance.items() if owned(name)}):
                     raise ValueError("User-model provenance belongs to cognition maintenance")
                 changes = record.get("changes", [])
                 old_changes = previous.get("changes", [])
-                if not isinstance(changes, list) or changes[:len(old_changes)] != old_changes:
+                if changes[:len(old_changes)] != old_changes:
                     raise ValueError("Existing change history must remain intact")
     for identifier, record in knowledge.items():
         refs = record.get("relations", [])
-        if not isinstance(refs, list) or len(refs) != len(set(refs)):
+        if len(refs) != len(set(refs)):
             raise ValueError("Explicit relation references must be distinct IDs")
         for relation_id in refs:
             relation = relations.get(relation_id)
@@ -229,11 +287,7 @@ def register_expansion_analysis(runtime, refs, reason, source_commit, *, depende
 
 
 def register_user_edit(runtime, request):
-    if (not isinstance(request, dict) or set(request) != {"record_kind", "record_id", "expected_version", "changes", "reason"}
-            or request["record_kind"] not in {"knowledge", "relation"} or not _text(request["reason"])):
-        raise ValueError("Knowledge edits require kind, ID, expected version, changes and reason")
-    _identifier(request["record_id"])
-    _identifier(request["expected_version"], 64)
+    EDIT_ARGS.validate_python(request)
     changes = request["changes"]
     allowed = {"name", "aliases", "content", "relations"} if request["record_kind"] == "knowledge" else {
         "name", "aliases", "content", "source_knowledge_id", "target_knowledge_id", "kind", "relation_type", "direction_semantics", "record_status", "analogy", "assessment", "symmetric"}
@@ -241,7 +295,7 @@ def register_user_edit(runtime, request):
         if isinstance(value, dict):
             return any(name in {"source_refs", "basis_refs", "external_evidence_refs"} or source_edit(child) for name, child in value.items())
         return isinstance(value, list) and any(source_edit(child) for child in value)
-    if not isinstance(changes, dict) or not changes or set(changes) - allowed or source_edit(changes):
+    if set(changes) - allowed or source_edit(changes):
         raise ValueError("IDs, sources, history and user-model fields are read only in a content edit")
     directory = "knowledge" if request["record_kind"] == "knowledge" else "relations"
     with runtime.store.locked():
@@ -334,8 +388,7 @@ def execution_task(runtime, task):
 
 
 def allocate_id(runtime, task_id, kind):
-    if kind not in {"knowledge", "relation"}:
-        raise ValueError("Invalid record kind")
+    RECORD_KIND.validate_python(kind, strict=True)
     with runtime.store.locked():
         task = runtime._live(task_id)
         if task["kind"] != "knowledge" or task["status"] != "running":
@@ -372,9 +425,7 @@ def validate_task(runtime, task, result):
     if result is None:
         runtime._check_input(task)
         return
-    if (not isinstance(result, dict) or set(result) != {"knowledge_refs", "relation_refs", "reason"}
-            or not _text(result["reason"])):
-        raise ValueError("Invalid knowledge result")
+    MAINTENANCE_RESULT.validate_python(result)
     inputs = json.loads(runtime.store.read_version(task["execution_input_version"]))
     records, baseline, versions = _workspace(runtime, task)
     validate_collection(runtime.store, **records, baseline=baseline)
@@ -398,8 +449,6 @@ def validate_task(runtime, task, result):
                         raise ValueError("New record source is outside the fixed task input")
     for field, kind in (("knowledge_refs", "knowledge"), ("relation_refs", "relations")):
         refs = result[field]
-        if not isinstance(refs, list) or any(not isinstance(ref, dict) or set(ref) not in ({"id"}, {"id", "version"}) for ref in refs):
-            raise ValueError("Invalid changed record references")
         identifiers = [_identifier(ref["id"]) for ref in refs]
         if len(set(identifiers)) != len(identifiers) or set(identifiers) != changed[kind]:
             raise ValueError("Result references must describe the actual record changes")

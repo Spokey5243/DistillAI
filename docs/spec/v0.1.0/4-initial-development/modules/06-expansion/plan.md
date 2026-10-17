@@ -50,6 +50,10 @@ uv run --locked python -m unittest discover -s tests -p 'test_product_expansion.
 
 完整证据、收尾测试结果与范围见[总 Plan](../../plan.md)第二批执行记录；本地通过不代替 GitHub CI，未迁移真实数据或执行远端写入。
 
+## 2026-10-17 恢复后第四批：共享结构与工具 schema
+
+搜索 / 网页参数 schema 从本模块严格模型生成；扩展记录、声明 / 连接 / 开放问题和结果结构由 TypeAdapter 验证，实际已读证据、输入版本、连接端点与部分保留仍为业务检查。真实 Tavily keyless + 实际 PM AIAgent 扩展 / M04 / M07 / 用户编辑 5 / 3 / 3 / 3 次成功，192 项完整产品通过；模型响应合成，语义未验。见[总 Plan](../../plan.md)。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

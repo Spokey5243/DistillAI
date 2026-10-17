@@ -3,20 +3,19 @@ from copy import deepcopy
 import json
 from pathlib import Path
 import uuid
+from typing import Annotated, Literal, NotRequired, TypedDict
 
-from .sources import read_source, queue_path, record_submission
+from pydantic import BeforeValidator, ConfigDict, Field, TypeAdapter, with_config
+
+from .sources import DraftRecordRef, DRAFT_RECORD_REFS, Identifier, NonblankText, QueueRef, QUEUE_REFS, RecordRef, SessionKey, Version, read_source, queue_path, record_submission
 from .storage import atomic_json, _hash, _identifier, ConflictError
 
 
 def _positions(refs, key, *, limit=None):
-    if not isinstance(refs, list):
-        raise ValueError("Source references must be a list")
+    QUEUE_REFS.validate_python(refs, strict=True)
     positions = []
     for ref in refs:
-        if (not isinstance(ref, dict) or set(ref) != {"connector", "session_key", "line_start", "line_end"}
-                or ref["connector"] != "codex" or ref["session_key"] != key
-                or type(ref["line_start"]) is not int or type(ref["line_end"]) is not int
-                or not 1 <= ref["line_start"] <= ref["line_end"]):
+        if ref["session_key"] != key or ref["line_start"] > ref["line_end"]:
             raise ValueError("Invalid session source range")
         if limit is not None and ref["line_end"] > limit:
             raise ValueError("Source exceeds the fixed boundary")
@@ -62,12 +61,120 @@ def _keywords(value):
     return words
 
 
+Keywords = Annotated[list[str], BeforeValidator(_keywords), Field(max_length=5)]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class SourceQuote(TypedDict):
+    source_ref: QueueRef
+    quote: NonblankText
+
+
+QUOTES = TypeAdapter(Annotated[list[SourceQuote], Field(min_length=1)])
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class BoundaryCandidate(TypedDict):
+    source_refs: list[QueueRef]
+    keywords: Keywords
+    C: Annotated[int, Field(ge=0, le=4)]
+    basis: Annotated[list[SourceQuote], Field(min_length=1)]
+    reason: NonblankText
+    group: NonblankText
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class BoundaryArgs(TypedDict):
+    episode_ref: RecordRef
+    episode_keywords: Keywords
+    episode_source_refs: list[QueueRef]
+    episode_basis: Annotated[list[SourceQuote], Field(min_length=1)]
+    candidates: Annotated[list[BoundaryCandidate], Field(min_length=1)]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class Assignment(TypedDict):
+    episode_id: Identifier
+    source_refs: list[QueueRef]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class CorrectionArgs(TypedDict):
+    session_key: SessionKey
+    episode_refs: Annotated[list[RecordRef], Field(min_length=1)]
+    assignments: list[Assignment]
+    reason: NonblankText
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class RevisionArgs(CorrectionArgs):
+    basis: Annotated[list[SourceQuote], Field(min_length=1)]
+
+
+BOUNDARY_ARGS = TypeAdapter(BoundaryArgs)
+CORRECTION_ARGS = TypeAdapter(CorrectionArgs)
+REVISION_ARGS = TypeAdapter(RevisionArgs)
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class BoundaryBasis(TypedDict):
+    reason: NonblankText
+    source_refs: list[QueueRef]
+    evaluation_versions: list[Version]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class EpisodeRecord(TypedDict):
+    id: Identifier
+    connector: Literal["codex"]
+    session_key: SessionKey
+    topic: NonblankText
+    goal: NonblankText
+    state: Literal["open", "closed"]
+    source_refs: list[QueueRef]
+    boundary_basis: BoundaryBasis
+    close_reason: NotRequired[str]
+    summary: NotRequired[str]
+    related_episode_ids: NotRequired[list[Identifier]]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class BufferedTurn(TypedDict):
+    source_refs: list[QueueRef]
+    evaluation_version: Version
+    keywords: Keywords
+    C: Annotated[int, Field(ge=0, le=4)]
+    reason: NonblankText
+    group: NonblankText
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class SessionState(TypedDict):
+    connector: Literal["codex"]
+    session_key: SessionKey
+    active_episode_id: Identifier | None
+    buffer: list[BufferedTurn]
+    processed_line: Annotated[int, Field(ge=0)]
+    material_updates: Annotated[int, Field(ge=0)]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class EpisodeResult(TypedDict):
+    episode_refs: list[DraftRecordRef]
+    closed_episode_refs: list[DraftRecordRef]
+    revised_episode_refs: list[DraftRecordRef]
+    buffered_source_refs: list[QueueRef]
+    reason: NonblankText
+
+
+EPISODE_RECORD = TypeAdapter(EpisodeRecord)
+SESSION_STATE = TypeAdapter(SessionState)
+EPISODE_RESULT = TypeAdapter(EpisodeResult)
+
+
 def _basis(value, allowed, sources, key):
-    if not isinstance(value, list) or not value:
-        raise ValueError("Original source evidence is required")
+    QUOTES.validate_python(value)
     for item in value:
-        if not isinstance(item, dict) or set(item) != {"source_ref", "quote"} or not isinstance(item["quote"], str) or not item["quote"].strip():
-            raise ValueError("Evidence needs a source reference and an actual quote")
         positions = _positions([item["source_ref"]], key, limit=max(sources, default=0))
         if not positions or not set(positions).issubset(allowed):
             raise ValueError("Evidence is outside the fixed source scope")
@@ -78,9 +185,7 @@ def _basis(value, allowed, sources, key):
 
 
 def score_boundary(inputs, args):
-    expected = {"episode_ref", "episode_keywords", "episode_source_refs", "episode_basis", "candidates"}
-    if not isinstance(args, dict) or set(args) != expected:
-        raise ValueError("Invalid boundary evaluation fields")
+    BOUNDARY_ARGS.validate_python(args)
     if not inputs.get("active_episode_ref") or args["episode_ref"] != inputs["active_episode_ref"]:
         raise ValueError("Boundary evaluation requires the fixed active episode")
     key = inputs["session_key"]
@@ -96,22 +201,14 @@ def score_boundary(inputs, args):
         raise ValueError("Old episode keywords require old episode sources")
     old_words = _keywords(args["episode_keywords"])
     old_basis = _basis(args["episode_basis"], set(selected), sources, key)
-    if not isinstance(args["candidates"], list) or not args["candidates"]:
-        raise ValueError("Candidate turns are required")
     allowed_turns = {_json(item["source_refs"]) for item in inputs["turns"]}
     seen, evaluations = set(), []
     for candidate in args["candidates"]:
-        if not isinstance(candidate, dict) or set(candidate) != {"source_refs", "keywords", "C", "basis", "reason", "group"}:
-            raise ValueError("Invalid candidate fields")
         identity = _json(candidate["source_refs"])
         if identity not in allowed_turns or identity in seen:
             raise ValueError("Candidate must name a distinct complete fixed turn")
         seen.add(identity)
         continuity = candidate["C"]
-        if type(continuity) is not int or not 0 <= continuity <= 4:
-            raise ValueError("Continuity C must be an integer between zero and four")
-        if any(not isinstance(candidate[name], str) or not candidate[name].strip() for name in ("reason", "group")):
-            raise ValueError("Candidate reason and grouping basis are required")
         words = _keywords(candidate["keywords"])
         basis = _basis(candidate["basis"], set(_positions(candidate["source_refs"], key)), sources, key)
         overlap = len(set(old_words) & set(words)) / len(set(old_words) | set(words)) if old_words and words else None
@@ -278,9 +375,10 @@ def read_episode_source(runtime, task_id, args):
 
 
 def evaluate_revision(runtime, task_id, args):
+    REVISION_ARGS.validate_python(args)
     with runtime.store.locked():
         task = runtime._live(task_id)
-        if task["kind"] != "episode" or task["trigger"] != "material" or task["status"] != "running" or not isinstance(args, dict) or set(args) != {"session_key", "episode_refs", "assignments", "reason", "basis"}:
+        if task["kind"] != "episode" or task["trigger"] != "material" or task["status"] != "running":
             raise ValueError("Revision scope requires a running material task and new original evidence")
         inputs = _execution(runtime, task)
         _record_refs(args["episode_refs"])
@@ -307,13 +405,8 @@ def _execution(runtime, task):
 
 
 def _record_refs(refs):
-    if not isinstance(refs, list):
-        raise ValueError("Record references must be a list")
-    ids = []
-    for ref in refs:
-        if not isinstance(ref, dict) or set(ref) not in ({"id"}, {"id", "version"}):
-            raise ValueError("Invalid episode reference")
-        ids.append(_identifier(ref["id"]))
+    DRAFT_RECORD_REFS.validate_python(refs, strict=True)
+    ids = [ref["id"] for ref in refs]
     if len(ids) != len(set(ids)):
         raise ValueError("Repeated episode reference")
     return set(ids)
@@ -342,9 +435,7 @@ def validate_task(runtime, task, result):
         for ref in task["inputs"].get("source_refs", []):
             read_source(runtime.store.home, ref)
         return
-    fields = {"episode_refs", "closed_episode_refs", "revised_episode_refs", "buffered_source_refs", "reason"}
-    if not isinstance(result, dict) or set(result) != fields or not isinstance(result["reason"], str) or not result["reason"].strip():
-        raise ValueError("Invalid episode result")
+    EPISODE_RESULT.validate_python(result)
     inputs = _execution(runtime, task)
     closing = "closing" in inputs
     key, end = inputs["session_key"], inputs["line_end"]
@@ -355,14 +446,11 @@ def validate_task(runtime, task, result):
     validate_reanalysis_workspace(runtime, task)
     state_name = "buffers/" + key + ".json"
     current = json.loads(files[state_name])
-    if set(current) != set(inputs["state"]):
-        raise ValueError("Invalid session state fields")
+    SESSION_STATE.validate_python(current)
     for name in ("connector", "session_key", "processed_line", "material_updates"):
         expected = task.get("episode_prepared", {}).get(name, inputs["state"][name])
         if current[name] != expected or type(current[name]) is not type(expected):
             raise ValueError("Agent changed protected processing state")
-    if not isinstance(current["buffer"], list):
-        raise ValueError("Buffer must be a list")
     evaluations, current_versions = _evaluate_versions(runtime, task, inputs)
     ownership, records, changed = {}, {}, set()
     old_records = inputs["episode_records"]
@@ -380,17 +468,10 @@ def validate_task(runtime, task, result):
             if baseline is None or _hash(data) != baseline["version"]:
                 raise ValueError("Episode task changed another session")
             continue
-        required = {"id", "connector", "session_key", "topic", "goal", "state", "source_refs", "boundary_basis"}
-        allowed = required | {"close_reason", "summary", "related_episode_ids"}
-        if set(record) - allowed or not required.issubset(record) or record["id"] != identifier or record["connector"] != "codex":
+        EPISODE_RECORD.validate_python(record)
+        if record["id"] != identifier:
             raise ValueError("Invalid episode record identity or fields")
-        if record["state"] not in ("open", "closed") or any(not isinstance(record[field], str) or not record[field].strip() for field in ("topic", "goal")):
-            raise ValueError("Episode needs a topic, goal and state")
         basis = record["boundary_basis"]
-        if (not isinstance(basis, dict) or set(basis) != {"reason", "source_refs", "evaluation_versions"}
-                or not isinstance(basis["reason"], str) or not basis["reason"].strip()
-                or not isinstance(basis["evaluation_versions"], list)):
-            raise ValueError("Episode boundary basis is required")
         for source in [*record["source_refs"], *basis["source_refs"]]:
             read_source(runtime.store.home, source)
         positions = _positions(record["source_refs"], key, limit=end)
@@ -425,8 +506,6 @@ def validate_task(runtime, task, result):
         raise ValueError("Closing must settle the whole fixed buffer and leave no active episode")
     buffered = []
     for item in current["buffer"]:
-        if not isinstance(item, dict) or set(item) != {"source_refs", "evaluation_version", "keywords", "C", "reason", "group"}:
-            raise ValueError("Invalid buffer item")
         evaluation = evaluations.get(item["evaluation_version"])
         match = next((candidate for candidate in evaluation["evaluations"] if candidate["source_refs"] == item["source_refs"]), None) if evaluation else None
         if match is None or any(item[name] != match[name] for name in ("keywords", "C", "reason", "group")) or match["S"] < 2:
@@ -578,15 +657,11 @@ def after_commit(runtime, task):
 
 
 def _correction_request(store, request):
-    if (not isinstance(request, dict) or set(request) != {"session_key", "episode_refs", "assignments", "reason"}
-            or not isinstance(request["reason"], str) or not request["reason"].strip()):
-        raise ValueError("Correction requires fixed episode versions, assignments and a reason")
+    CORRECTION_ARGS.validate_python(request)
     key = request["session_key"]
     queue_path(store.home, key)
     refs = request["episode_refs"]
     identifiers = _record_refs(refs)
-    if not identifiers or any(set(ref) != {"id", "version"} for ref in refs):
-        raise ValueError("Correction requires expected versions")
     records, before = {}, set()
     for ref in refs:
         path = store.home / "episodes" / (ref["id"] + ".json")
@@ -601,11 +676,11 @@ def _correction_request(store, request):
             raise ValueError("Existing source ownership overlaps")
         before.update(positions)
     assignments = request["assignments"]
-    if not isinstance(assignments, list) or len(assignments) != len(identifiers):
+    if len(assignments) != len(identifiers):
         raise ValueError("Every affected episode needs one assignment")
     owners, assigned = {}, set()
     for item in assignments:
-        if not isinstance(item, dict) or set(item) != {"episode_id", "source_refs"} or item["episode_id"] not in identifiers or item["episode_id"] in assigned:
+        if item["episode_id"] not in identifiers or item["episode_id"] in assigned:
             raise ValueError("Unknown or repeated correction target")
         assigned.add(item["episode_id"])
         positions = _positions(item["source_refs"], key)

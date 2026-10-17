@@ -50,6 +50,10 @@ uv run --locked python tests/test_capture.py
 
 完整证据、收尾测试结果与范围见[总 Plan](../../plan.md)第二批执行记录；本地通过不代替 GitHub CI，未迁移真实数据或执行远端写入。
 
+## 2026-10-17 恢复后第四批：共享结构与工具 schema
+
+共用 SourceRef / RecordRef 的严格结构保留在 sources.py，增加 DraftRecordRef / SessionKey / 非空文本供下游直接复用，校验错误不输出来源原文。完整产品 192 项通过，未变更 Hook payload、原始队列或 Desktop 事件适配；G2 继续待验。详见[总 Plan](../../plan.md)。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

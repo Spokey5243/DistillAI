@@ -7,10 +7,74 @@ import socket
 import time
 import uuid
 from urllib.parse import urlsplit
+from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
+from pydantic import ConfigDict, Field, TypeAdapter, with_config
 from .knowledge import _snapshot, _references, _text
-from .sources import now as timestamp, read_source, record_submission
+from .sources import DraftRecordRef, Identifier, NonblankText, RecordRef, SourceRef, now as timestamp, read_source, record_submission
 from .storage import atomic_json, _hash, _identifier
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class SearchArgs(TypedDict):
+    query: Annotated[NonblankText, Field(max_length=2000)]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class FetchArgs(TypedDict):
+    url: Annotated[str, Field(max_length=8192)]
+
+
+SEARCH_ARGS = TypeAdapter(SearchArgs)
+FETCH_ARGS = TypeAdapter(FetchArgs)
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class CandidateEndpoint(TypedDict):
+    candidate: NonblankText
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class OpenQuestion(TypedDict):
+    statement: NonblankText
+    source_refs: list[SourceRef]
+    verification: NotRequired[Any]
+    conditions: NotRequired[Any]
+    status: NotRequired[Any]
+    value: NotRequired[Any]
+    source: NotRequired[Any]
+    target: NotRequired[Any]
+
+
+class Claim(OpenQuestion):
+    verification: NonblankText
+    status: Literal["supported", "conflicting", "unverified"]
+
+
+class Connection(Claim):
+    source: RecordRef | CandidateEndpoint
+    target: RecordRef | CandidateEndpoint
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class ExpansionRecord(TypedDict):
+    id: Identifier
+    input_refs: list[RecordRef]
+    question: NonblankText
+    reason: NonblankText
+    claims: list[Claim]
+    proposed_connections: list[Connection]
+    open_questions: list[OpenQuestion]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class ExpansionResult(TypedDict):
+    expansion_refs: list[DraftRecordRef]
+    reason: NonblankText
+
+
+EXPANSION_RECORD = TypeAdapter(ExpansionRecord)
+EXPANSION_RESULT = TypeAdapter(ExpansionResult)
 
 
 def _url(value):
@@ -30,15 +94,13 @@ def _url(value):
 
 
 def prepare_web_call(runtime, task_id, tool, args):
-    if not isinstance(args, dict) or tool not in {"web_search", "fetch_page"}:
+    if tool not in {"web_search", "fetch_page"}:
         raise ValueError("Invalid web tool")
     if tool == "web_search":
-        if set(args) != {"query"} or not _text(args["query"]) or len(args["query"]) > 2000:
-            raise ValueError("Search requires a nonempty query up to 2000 characters")
+        SEARCH_ARGS.validate_python(args)
         endpoint, payload = "search", {"query": args["query"], "max_results": 5, "include_raw_content": False, "include_images": False}
     else:
-        if set(args) != {"url"}:
-            raise ValueError("Page reading requires one public URL")
+        FETCH_ARGS.validate_python(args)
         endpoint, payload = "extract", {"urls": [_url(args["url"])], "include_images": False}
     with runtime.store.locked():
         task = runtime._live(task_id)
@@ -223,8 +285,7 @@ def validate_task(runtime, task, result):
         raise ValueError("Expected an expansion task")
     if result is None:
         return
-    if not isinstance(result, dict) or set(result) != {"expansion_refs", "reason"} or not _text(result["reason"]):
-        raise ValueError("Invalid expansion result")
+    EXPANSION_RESULT.validate_python(result)
     identifier = task["inputs"]["expansion_id"]
     refs = result["expansion_refs"]
     network_errors = [call for call in task.get("web_calls", []) if "error" in json.loads(runtime.store.read_version(call["result_version"]))]
@@ -242,27 +303,19 @@ def validate_task(runtime, task, result):
     if not refs:
         return
     record = json.loads(file.read_text(encoding="utf-8"))
-    if (not isinstance(record, dict) or set(record) != {"id", "input_refs", "question", "reason", "claims", "proposed_connections", "open_questions"}
-            or record["id"] != identifier or record["input_refs"] != task["inputs"]["knowledge_refs"]
-            or not _text(record["question"]) or not _text(record["reason"])):
+    EXPANSION_RECORD.validate_python(record)
+    if record["id"] != identifier or record["input_refs"] != task["inputs"]["knowledge_refs"]:
         raise ValueError("Invalid expansion identity, question or fixed input")
     inputs = json.loads(runtime.store.read_version(task["execution_input_version"]))
     known = {(item["id"], item["version"]) for item in inputs["records"]}
     def endpoint(value):
-        if isinstance(value, dict) and set(value) == {"candidate"} and _text(value["candidate"]):
+        if "candidate" in value:
             return
-        if not isinstance(value, dict) or set(value) != {"id", "version"} or (value["id"], value["version"]) not in known:
+        if (value["id"], value["version"]) not in known:
             raise ValueError("Connection endpoint must be an input record or explicit candidate")
     for group in ("claims", "proposed_connections", "open_questions"):
-        if not isinstance(record[group], list):
-            raise ValueError("Expansion sections must be lists")
         for item in record[group]:
-            allowed = {"statement", "source_refs", "verification", "conditions", "status", "value", "source", "target"}
-            if not isinstance(item, dict) or set(item) - allowed or not _text(item.get("statement")) or not isinstance(item.get("source_refs"), list):
-                raise ValueError("Each claim or gap needs its own statement and sources")
             if group != "open_questions":
-                if item.get("status") not in {"supported", "conflicting", "unverified"} or not _text(item.get("verification")):
-                    raise ValueError("Each claim needs an individual verification status and explanation")
                 if item["status"] != "unverified" and not item["source_refs"]:
                     raise ValueError("Verified claims require actual read evidence")
             if group == "proposed_connections":

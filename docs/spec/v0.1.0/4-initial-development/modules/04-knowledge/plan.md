@@ -62,6 +62,10 @@ TaskPipe 采用标准库认证 AF_PIPE / send_bytes / recv_bytes；阻塞 accept
 
 详情 / 来源 / 同批端点 / 主名 / 版本冲突、M04 指定字段编辑和 M05 字段保留沿现有组复跑通过。完整产品 192 项通过，实际 AIAgent 文件 / Shell 维护随新 Windows 绑定再次通过；完整语义与 episode 真实执行链仍有未验范围。证据 .artifacts/third-graph-results.json，详见[总 Plan](../../plan.md)第三批。
 
+## 2026-10-17 恢复后第四批：共享结构与工具 schema
+
+记录 / 关系元数据、维护结果和用户编辑参数复用本模块严格模型，共用 SourceRef / RecordRef 与 ID / 版本类型；新 ID 工具参数由同一模型生成 schema。内容 / provenance 等开放 map 保持原文档契约，M05 字段由其所属模块验证，跨对象来源和前后版本仍独立校验。完整产品 192 项及实际 PM 的知识链 / 扩展与用户编辑链通过；不代替真实模型语义。见[总 Plan](../../plan.md)。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

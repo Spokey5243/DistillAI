@@ -121,6 +121,10 @@ IPC 六项实际 Windows 组覆盖未连 / 未认证 / 不回复、双向阻塞�
 
 证据与原生残余原因见[总 Plan](../../plan.md)第三批和 .artifacts/third-win32-gaps.json、ipc-complete-phases.log、third-scheduler-late.log。字段模型 / 工具 schema、日志整合、剩余故障窗口与接入仍未全部完成。
 
+## 2026-10-17 恢复后第四批：共享结构与工具 schema
+
+共享引用与领域模型、工具参数及生成 schema 已接通；本轮 192 项完整产品与 5 项浏览器通过，实际 PM AIAgent 的 43 请求预算组、Episode / 认知链、新材料修订和真实 Tavily 扩展链复跑通过。R5.1 仍有 HTTP 请求 / 剩余记录清点，R2.2 / R5.4 / R6 故障闭环继续未勾；APScheduler 正常停机取消诊断待生命周期整理。细节与合成验证边界见[总 Plan](../../plan.md)。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

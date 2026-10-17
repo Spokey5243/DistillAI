@@ -158,15 +158,18 @@ def _operation(runtime, task_id, name, arguments):
         return web_tool(runtime, task_id, arguments["tool"], arguments["arguments"], arguments["response"])
     if name == "new_record_id":
         kind = arguments.get("record_kind")
-        if set(arguments) != ({"record_kind", "source_refs"} if kind == "observation" else {"record_kind"}):
-            raise ValueError("Invalid record allocation")
         if kind == "candidate":
-            from .context import allocate_candidate
+            from .context import ALLOCATION_ARGS, allocate_candidate
+            ALLOCATION_ARGS.validate_python(arguments)
             return allocate_candidate(runtime, task_id)
         if kind in {"observation", "hypothesis"}:
-            from .cognition import allocate_id
+            from .cognition import ALLOCATION_ARGS, allocate_id
+            ALLOCATION_ARGS.validate_python(arguments)
+            if kind == "hypothesis" and "source_refs" in arguments:
+                raise ValueError("Hypothesis allocation does not accept observation sources")
             return allocate_id(runtime, task_id, kind, arguments.get("source_refs"))
-        from .knowledge import allocate_id
+        from .knowledge import ALLOCATION_ARGS, allocate_id
+        ALLOCATION_ARGS.validate_python(arguments)
         return allocate_id(runtime, task_id, kind)
     raise ValueError("Unknown program operation")
 

@@ -94,6 +94,9 @@ class ToolTests(unittest.TestCase):
         self.assertEqual(result["records"], [record])
         self.assertEqual(json.loads(registry.handlers["query_records"]({"id": "unknown"}))["records"], [])
         self.assertEqual(json.loads(registry.handlers["query_records"]({}))["error"]["code"], "invalid_query")
+        for args in ({"name": 1}, {"name": "alias", "include_private": True}, {"version": "frozen-version"}):
+            with self.subTest(args=args):
+                self.assertEqual(json.loads(registry.handlers["query_records"](args))["error"]["code"], "invalid_query")
 
     def test_source_lookup_uses_exact_frozen_reference_and_reports_unavailable(self):
         registry = Registry()
@@ -101,6 +104,10 @@ class ToolTests(unittest.TestCase):
         register_read_tools(registry, {"sources": [source]})
         self.assertEqual(json.loads(registry.handlers["read_source"]({"ref": source["ref"]}))["sources"], [source])
         self.assertEqual(json.loads(registry.handlers["read_source"]({"ref": {"line_start": 9}}))["error"]["code"], "source_not_in_task_snapshot")
+        for ref in ({**source["ref"], "line_start": True}, {**source["ref"], "line_end": 2.0},
+                    {**source["ref"], "path": "private.jsonl"}):
+            with self.subTest(ref=ref):
+                self.assertEqual(json.loads(registry.handlers["read_source"]({"ref": ref}))["error"]["code"], "source_not_in_task_snapshot")
 
 
 if __name__ == "__main__":

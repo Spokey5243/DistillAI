@@ -3,14 +3,113 @@ from copy import deepcopy
 import json
 from pathlib import Path
 import uuid
+from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
-from .knowledge import validate_collection as validate_knowledge, _text
-from .sources import read_source, utc, now, contains, record_submission
+from pydantic import ConfigDict, Field, TypeAdapter, with_config
+from .knowledge import MaintenanceResult, RecordKind as ContentKind, validate_collection as validate_knowledge, _text
+from .sources import DraftRecordRef, Identifier, NonblankText, RecordRef, SourceRef, Version, read_source, utc, now, contains, record_submission
 from .storage import _identifier, _hash, atomic_json, ConflictError
 
 
 FIELDS = {"observations", "hypotheses", "hypothesis_refs", "cognition"}
 REANALYSIS = "cognition/reanalysis.json"
+
+
+RecordKind = Literal["observation", "hypothesis"]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class AllocationArgs(TypedDict):
+    record_kind: RecordKind
+    source_refs: NotRequired[list[SourceRef]]
+
+
+ALLOCATION_ARGS = TypeAdapter(AllocationArgs)
+RECORD_KIND = TypeAdapter(RecordKind)
+
+
+type Qualitative = str | list[str] | dict[str, Qualitative]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class ObservationSource(TypedDict):
+    episode_id: NotRequired[Identifier]
+    source_refs: Annotated[list[SourceRef], Field(min_length=1)]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class Observation(TypedDict):
+    id: Identifier
+    observed_at: str | None
+    source: ObservationSource
+    task: NonblankText
+    help: Annotated[str | dict[str, Any], Field(min_length=1)]
+    performance: NonblankText
+    scope: NotRequired[Any]
+    outcome: NotRequired[Any]
+    initiation: NotRequired[Any]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class Hypothesis(TypedDict):
+    id: Identifier
+    claim: NonblankText
+    status: NonblankText
+    needed_evidence: str
+    changes: NotRequired[list[Any]]
+
+
+class InlineHypothesis(Hypothesis):
+    supporting_observation_ids: list[Identifier]
+    counter_observation_ids: list[Identifier]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class ObservationLocator(TypedDict):
+    record_id: Identifier
+    observation_id: Identifier
+
+
+class SharedHypothesis(Hypothesis):
+    knowledge_refs: list[RecordRef]
+    relation_refs: list[RecordRef]
+    supporting_observations: list[ObservationLocator]
+    counter_observations: list[ObservationLocator]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class Judgment(TypedDict):
+    assessed_at: str
+    understanding: NotRequired[dict[str, Qualitative]]
+    summary: NotRequired[str]
+    observation_ids: NotRequired[list[Identifier]]
+    latest_observed_performance_id: NotRequired[Identifier | None]
+    hypothesis_ids: NotRequired[list[Identifier]]
+    hypothesis_refs: NotRequired[list[Identifier]]
+    hypothesis_scope: NotRequired[Any]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class CorrectionArgs(TypedDict):
+    record_kind: ContentKind
+    record_id: Identifier
+    expected_version: Version
+    performance: NonblankText
+    help: NonblankText
+    reason: NonblankText
+
+
+class CognitionResult(MaintenanceResult):
+    hypothesis_refs: list[DraftRecordRef]
+
+
+OBSERVATIONS = TypeAdapter(list[Observation])
+INLINE_HYPOTHESIS = TypeAdapter(InlineHypothesis)
+SHARED_HYPOTHESIS = TypeAdapter(SharedHypothesis)
+JUDGMENT = TypeAdapter(Judgment)
+CORRECTION_ARGS = TypeAdapter(CorrectionArgs)
+COGNITION_RESULT = TypeAdapter(CognitionResult)
+IDENTIFIERS = TypeAdapter(list[Identifier])
 
 
 def reanalysis(store, record_id=None):
@@ -142,35 +241,14 @@ def _content(record):
 
 
 def _ids(value):
-    if not isinstance(value, list):
-        raise ValueError("Evidence identities must be a list")
-    ids = [_identifier(item) for item in value]
+    ids = IDENTIFIERS.validate_python(value, strict=True)
     if len(ids) != len(set(ids)):
         raise ValueError("Repeated evidence identity")
     return set(ids)
 
 
 def _claim(hypothesis, *, external=False):
-    fields = {"id", "claim", "status", "needed_evidence"}
-    fields |= {"knowledge_refs", "relation_refs", "supporting_observations", "counter_observations"} if external else {
-        "supporting_observation_ids", "counter_observation_ids"}
-    if not isinstance(hypothesis, dict) or not fields.issubset(hypothesis) or set(hypothesis) - (fields | {"changes"}):
-        raise ValueError("Invalid hypothesis fields")
-    _identifier(hypothesis["id"])
-    if not _text(hypothesis["claim"]) or not _text(hypothesis["status"]) or not isinstance(hypothesis["needed_evidence"], str):
-        raise ValueError("Hypothesis must retain its claim, treatment and unresolved question")
-
-
-def _qualitative(value):
-    if isinstance(value, dict):
-        for child in value.values():
-            _qualitative(child)
-    elif isinstance(value, list):
-        for child in value:
-            if not isinstance(child, str):
-                raise ValueError("Understanding references must be textual IDs")
-    elif not isinstance(value, str):
-        raise ValueError("Understanding is qualitative text, not a score or fixed numeric level")
+    (SHARED_HYPOTHESIS if external else INLINE_HYPOTHESIS).validate_python(hypothesis)
 
 
 def _named_references(value, names):
@@ -197,24 +275,16 @@ def validate_collection(store, knowledge, relations, hypotheses, *, baseline):
         if not isinstance(changes, list) or changes[:len(old_changes)] != old_changes:
             raise ValueError("Prior change history must remain intact")
         items = record.get("observations", [])
-        if not isinstance(items, list):
-            raise ValueError("Observations must be a list")
+        OBSERVATIONS.validate_python(items)
         seen = set()
         observations[identifier] = {}
         for item in items:
-            required = {"id", "observed_at", "source", "task", "help", "performance"}
-            if not isinstance(item, dict) or not required.issubset(item) or set(item) - (required | {"scope", "outcome", "initiation"}):
-                raise ValueError("Observation must keep identity, time, source, task, help and actual performance")
-            observation_id = _identifier(item["id"])
+            observation_id = item["id"]
             if observation_id in observations[identifier]:
                 raise ValueError("Repeated observation ID in one record")
             if item["observed_at"] is not None and utc(item["observed_at"]) is None:
                 raise ValueError("Observation time must be UTC-parsable or unknown")
-            if not _text(item["task"]) or not _text(item["performance"]) or not isinstance(item["help"], (str, dict)) or not item["help"]:
-                raise ValueError("Task, actual performance and help conditions are required")
             source = item["source"]
-            if not isinstance(source, dict) or set(source) not in ({"episode_id", "source_refs"}, {"source_refs"}):
-                raise ValueError("Observation source must retain its episode and original positions")
             if "episode_id" in source:
                 episode_id = _identifier(source["episode_id"])
                 path = store.home / "episodes" / (episode_id + ".json")
@@ -246,14 +316,9 @@ def validate_collection(store, knowledge, relations, hypotheses, *, baseline):
                     raise ValueError("Hypothesis references an unknown local observation")
         judgment = record.get("cognition")
         if judgment:
-            if not isinstance(judgment, dict) or utc(judgment.get("assessed_at")) is None:
+            JUDGMENT.validate_python(judgment)
+            if utc(judgment["assessed_at"]) is None:
                 raise ValueError("Judgment must retain its assessment time")
-            if set(judgment) - {"assessed_at", "understanding", "summary", "observation_ids", "latest_observed_performance_id", "hypothesis_ids", "hypothesis_refs", "hypothesis_scope"}:
-                raise ValueError("Unknown judgment fields; numeric confidence or levels are not supported")
-            if "understanding" in judgment:
-                if not isinstance(judgment["understanding"], dict):
-                    raise ValueError("Understanding dimensions must be an object")
-                _qualitative(judgment["understanding"])
             if "observation_ids" not in judgment and "observation_ids" not in judgment.get("understanding", {}):
                 raise ValueError("Judgment must declare the observations it uses, including an empty list for unknown")
             if any(reference not in observations[identifier] for reference in _named_references(judgment, {"observation_ids"})):
@@ -268,10 +333,8 @@ def validate_collection(store, knowledge, relations, hypotheses, *, baseline):
             raise ValueError("External hypothesis ID and filename disagree")
         affected = set()
         for field, collection, content_field in (("knowledge_refs", knowledge, "summary"), ("relation_refs", relations, "statement")):
-            if not isinstance(claim[field], list):
-                raise ValueError("Affected records must be fixed RecordRefs")
             for ref in claim[field]:
-                if not isinstance(ref, dict) or set(ref) != {"id", "version"} or ref["id"] not in collection:
+                if ref["id"] not in collection:
                     raise ValueError("Unknown affected record")
                 saved = json.loads(store.read_version(_identifier(ref["version"], 64)))
                 if saved.get("id") != ref["id"] or content_field not in saved.get("content", {}):
@@ -280,11 +343,8 @@ def validate_collection(store, knowledge, relations, hypotheses, *, baseline):
         if not affected:
             raise ValueError("External hypothesis must identify its affected records")
         for field in ("supporting_observations", "counter_observations"):
-            if not isinstance(claim[field], list):
-                raise ValueError("Cross-object evidence uses record and observation locators")
             for locator in claim[field]:
-                if (not isinstance(locator, dict) or set(locator) != {"record_id", "observation_id"}
-                        or locator["record_id"] not in affected or locator["observation_id"] not in observations[locator["record_id"]]):
+                if locator["record_id"] not in affected or locator["observation_id"] not in observations[locator["record_id"]]:
                     raise ValueError("Unknown cross-object observation locator")
     for identifier, record in records.items():
         for reference in _named_references({"hypothesis_refs": record.get("hypothesis_refs", []), "cognition": record.get("cognition", {})}, {"hypothesis_ids", "hypothesis_refs"}):
@@ -303,10 +363,7 @@ def register_analysis(runtime, refs, knowledge_result, reason, source_commit, *,
 
 
 def register_correction(runtime, request):
-    fields = {"record_kind", "record_id", "expected_version", "performance", "help", "reason"}
-    if (not isinstance(request, dict) or set(request) != fields or request["record_kind"] not in {"knowledge", "relation"}
-            or any(not _text(request[name]) for name in ("performance", "help", "reason"))):
-        raise ValueError("Cognition correction requires a target version, actual performance, help and reason")
+    CORRECTION_ARGS.validate_python(request)
     identifier = _identifier(request["record_id"])
     directory = "knowledge" if request["record_kind"] == "knowledge" else "relations"
     with runtime.store.locked():
@@ -359,8 +416,7 @@ def execution_task(runtime, task):
 
 
 def allocate_id(runtime, task_id, kind, refs=None):
-    if kind not in {"observation", "hypothesis"}:
-        raise ValueError("Invalid cognition record kind")
+    RECORD_KIND.validate_python(kind, strict=True)
     with runtime.store.locked():
         task = runtime._live(task_id)
         if task["kind"] != "cognition" or task["status"] != "running" or not task.get("execution_input_version"):
@@ -422,8 +478,7 @@ def validate_task(runtime, task, result):
     if result is None:
         runtime._check_input(task)
         return
-    if not isinstance(result, dict) or set(result) != {"knowledge_refs", "relation_refs", "hypothesis_refs", "reason"} or not _text(result["reason"]):
-        raise ValueError("Invalid cognition result")
+    COGNITION_RESULT.validate_python(result)
     inputs = json.loads(runtime.store.read_version(task["execution_input_version"]))
     validate_reanalysis_workspace(runtime, task)
     current, baseline, versions = _records(runtime, task)
@@ -466,9 +521,7 @@ def validate_task(runtime, task, result):
                         raise ValueError("New observation must use its source-bound program ID")
     for field, kind in (("knowledge_refs", "knowledge"), ("relation_refs", "relations"), ("hypothesis_refs", "hypotheses")):
         refs = result[field]
-        if not isinstance(refs, list) or any(not isinstance(ref, dict) or set(ref) not in ({"id"}, {"id", "version"}) for ref in refs):
-            raise ValueError("Invalid cognition record references")
-        identifiers = [_identifier(ref["id"]) for ref in refs]
+        identifiers = [ref["id"] for ref in refs]
         if len(identifiers) != len(set(identifiers)) or set(identifiers) != changed[kind]:
             raise ValueError("Cognition result must describe the actual changed records")
         for ref in refs:

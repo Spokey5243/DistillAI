@@ -269,6 +269,18 @@ Store 新增嵌套 / 跨线程互斥和进程死亡后文件锁释放回归；SQ
 
 本批本地提交范围是已批准的框架 / SDK / SQLite 基础迁移、相关边界回归和 Spec 同步；剩余步骤继续保留 approved 与未勾状态，不以基础提交冒充完整实现。Goal 维持 active，下一阶段继续领域 / 工具参数模型、Loguru 与剩余文件故障闭环；远端写入仍需对应授权。
 
+## 2026-10-17 恢复后第四批：共享结构与工具 schema
+
+在本地基础提交 a6de5b49319779e56ddd958771974c834c73b926 上续接。sources.py 共用 RecordRef / DraftRecordRef / SourceRef、ID / 版本 / session 与非空文本约束；领域结构留在 episode / knowledge / cognition / expansion / context。严格 TypeAdapter 接管记录 / 结果、观察与假设、查询 / 筛选及程序工具的字段结构；九组工具参数由相同定义生成 JSON Schema，删除对应手写 required / 类型 / 枚举检查。工具回调仍经认证 Connection 调用父进程，公式、来源实际存在 / 原文引用、同轮归属、权限、依赖版本与字段归属仍由原业务校验负责；验证后继续保存原 JSON，不用模型默认值或强制转换重写历史。
+
+内容 / provenance / 帮助说明等原本开放的文档 map 保留开放；M04 只保留 M05 所有的认知载荷，由 M05 校验结构，不抢夺字段归属。模型错误隐藏输入正文。公开只读工具补参数边界断言：数字冒充文本、bool / float 冒充行号、额外路径字段均拒绝，冻结引用读取和查询结果保持。九份工具参数与七类代表记录 schema 用已锁定 jsonschema 的 Draft202012Validator.check_schema 做一次性核对通过，不维护第二份结构 schema；上游工具自身的校验仍交 Hermes。
+
+最终完整产品 **192 tests / OK，55.112s**，真实 Chromium **5 tests / OK，18.567s**。实际固定 PM AIAgent：Episode 首建 / 窗口评分 / M04 / M05 为 3 / 7 / 7 / 5 次；新材料修订 / 空 M04 / 空 M05 为 10 / 1 / 1 次，验证旧来源按需 RPC、实际新引句、同清单等待与当前版本完成解除；明确归属纠错 / 空 M04 / 空 M05 / Web 独立认知纠错另为 5 / 1 / 1 / 4 次，当前版本解除且内容保持。真实 Tavily keyless + 合成模型的扩展 / M04 / M07 / 用户编辑为 5 / 3 / 3 / 3 次，证明来源版本与字段保护；SDK 七场景含最后额度成功 / 额外额度拒发仍为 43 个到达请求。模型均为 localhost 合成响应，不证明语义质量。证据 fourth-product-final.log、fourth-browser.log、fourth-episode-direct-final.log、fourth-material-revision.log、fourth-corrections-direct.log、fourth-expansion-direct.log、fourth-direct-hermes.log 在忽略的 .artifacts。
+
+Ruff、uv lock --check --offline、32 份文档 / 431 条本地链接与 git diff --check 通过；临时探针进程均已退出。
+
+R5.1 继续保留未勾：HTTP 请求结构和剩余记录字段的完整清点尚未全完；R2.2、Loguru R5.4 与 SQLite / 文件完整故障闭环继续实施。产品组仍打印 APScheduler 停机 CancelledError 诊断，退出与业务断言通过；后续生命周期 / 日志整理须区分正常取消和实际失败，不能静默吞异常。G2、物理 Windows 休眠、真实模型语义和 CI 仍未验，没有真实数据迁移或远端写入。Goal 保持 active，按原完整批准目标持续推进。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）
