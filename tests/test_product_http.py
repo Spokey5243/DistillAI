@@ -176,6 +176,31 @@ class HttpTests(unittest.TestCase):
             self.assertTrue(runtime._accepting)
             self.assertEqual(self.config.read()["version"], 1)
 
+    def test_quarantined_health_and_stop_do_not_wait_for_a_failing_publication_lock(self):
+        server, runtime = self.backend()
+        self.store.state.failed = True
+        answered = threading.Event()
+        responses = []
+        with serving(server):
+            def health():
+                try:
+                    responses.append(self.request(server, "/v1/health"))
+                    responses.append(self.request(server, "/internal/stop", method="POST", data={}))
+                finally:
+                    answered.set()
+            thread = threading.Thread(target=health)
+            try:
+                with self.store.locked():
+                    thread.start()
+                    self.assertTrue(answered.wait(2), "Health or stop waited for the failing writer's data lock")
+            finally:
+                thread.join(3)
+            self.assertEqual(responses[0][0], 200)
+            self.assertFalse(responses[0][1]["ready"])
+            self.assertEqual(responses[1], (202, {"stopping": True}))
+            self.assertFalse(runtime._accepting)
+            self.assertTrue(server.stopping.is_set())
+
     def test_oversized_control_body_is_rejected(self):
         server, _ = self.backend()
         with serving(server):

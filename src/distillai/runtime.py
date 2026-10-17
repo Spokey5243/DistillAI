@@ -102,6 +102,7 @@ class Runtime:
         if kind in {"query", "screening"} and scope is not None:
             raise ValueError("Read-only tasks have no publication scope")
         scope = self._scope(scope)
+        dependencies = list(dict.fromkeys(dependencies))
         if kind != "screening":
             prompt = (Path(__file__).parent / "prompts" / "common.txt").read_text(encoding="utf-8") + "\n" + prompt
         dedup = self._dedup(kind, inputs, trigger, scope)
@@ -467,6 +468,11 @@ class Runtime:
 
     def _complete_pending(self, task):
         try:
+            if task["commit_id"] and self.store.recover(task["commit_id"]).get("conflicts"):
+                task["status"] = "recovery_conflict"
+                task["error"] = {"code": "committed_content_missing_or_unsafe"}
+                self._save(task)
+                return
             self._complete(task)
         except Exception as error:
             task["status"] = "validating"
@@ -487,7 +493,9 @@ class Runtime:
     def recover_tasks(self):
         with self.store.locked():
             for task in self.tasks():
-                if task["status"] not in {"running", "validating", "recovering"}:
+                if task["status"] not in {"running", "validating", "recovering", "recovery_conflict"}:
+                    continue
+                if task["status"] == "recovery_conflict" and not task["commit_id"]:
                     continue
                 if task["id"] in self._active:
                     raise RuntimeError("Cannot recover an active execution tree")

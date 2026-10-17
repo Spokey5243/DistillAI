@@ -980,3 +980,11 @@ Web 固定静态路由为 `/`、`/app.js`、`/styles.css`，浏览器经单次 `
 复用 pywin32 的 CreateFile / ReadFile / WriteFile / SetFilePointer / SetEndOfFile / FlushFileBuffers、最终路径、按句柄 FileStreamInfo / 删除和 Job；普通文件与 Job 句柄由 PyHANDLE 管理。库的异常不继承 OSError，窄适配保持既有错误契约。原始 FILETIME 的 100ns 读写仍使用窄 Win32 绑定：[库的 GetFileInformationByHandle 返回日期对象](https://mhammond.github.io/pywin32/win32file__GetFileInformationByHandle_meth.html)，实测末位 7 被舍弃。根句柄相对 rename 虽有[库参数声明](https://mhammond.github.io/pywin32/win32file__SetFileInformationByHandle_meth.html)，实际返回 WinError 87，故保持 NtSetInformationFile；不改为绝对路径重新解析。NtCreateFile 根句柄相对打开与 NtResumeProcess 同样保持窄适配。具体可复现值见总 Plan 第三批与 .artifacts/third-win32-gaps.json。
 
 本次只补复用边界的技术事实，路径 / 时间 / 恢复 / 停树契约、数据兼容和批准范围不变，material_revision 仍为 3；Plan 补完成证据，不新增技术路线。
+
+### 2026-10-18：数据库故障与已提交内容缺失（Agent 闭环）
+
+落实修订 3 的隔离 / 恢复要求：SQLite 连接建立阶段的错误同样隔离当前根；恢复数据库后通过重启复核，不在运行中自动解除隔离。已有数字版本私有配置、不可变版本或任务副本而缺少数据库时拒绝初始化空库，避免丢失权威任务 / 次数；仅有采集队列、日志或 launch 配置仍允许首次启动。配置指针切换失败保留旧值及孤立新文件，下次选择未占用版本，不覆盖失败历史。重复依赖按首次出现顺序合并，不能触发数据库唯一约束并误隔离。
+
+未完成后置登记的已 committed 清单会复核输出文件 / 新增目录存在且路径安全；缺失或不安全时保留 committed 标记、前后版本及备份，任务记 recovery_conflict，暂停重叠范围写入。正常用户再编辑不被回滚；人工修复后重启复核，只补后继登记 / 索引，固定结果与预算不变。健康和停止入口只读取 / 设置运行状态，不等待数据发布锁；原授权、CSRF、停止排空及 Job 停树要求不变。
+
+这是已批准故障边界的遗漏闭环，未改变批准范围、数据格式版本或公开载荷，material_revision 仍为 3；总 Plan / M01-R6 与 M08 执行记录及 README 已同步，测试与实际进程证据见总 Plan 第七批。

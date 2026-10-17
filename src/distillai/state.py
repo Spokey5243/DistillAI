@@ -21,6 +21,10 @@ class State:
                 for directory in ("tasks", "commits"))
             if legacy:
                 raise ValueError("Legacy control state requires explicit offline migration")
+            initialized = any(path.stem.isdecimal() for path in (Path(home) / "config").glob("*.json")) or any(
+                next((Path(home) / directory).glob("*"), None) is not None for directory in ("versions", "workspaces"))
+            if initialized:
+                raise ValueError("Control database is missing from an initialized data root")
             temporary = self.path.with_name(".state-init-" + uuid.uuid4().hex)
             connection = sqlite3.connect(temporary, isolation_level=None)
             try:
@@ -58,9 +62,10 @@ class State:
 
     @contextmanager
     def transaction(self, *, write=True):
-        connection = sqlite3.connect(self.path.as_uri() + "?mode=rw", uri=True,
-                                     timeout=5, isolation_level=None)
+        connection = None
         try:
+            connection = sqlite3.connect(self.path.as_uri() + "?mode=rw", uri=True,
+                                         timeout=5, isolation_level=None)
             connection.execute("PRAGMA foreign_keys=ON")
             connection.execute("PRAGMA synchronous=FULL")
             connection.execute("BEGIN IMMEDIATE" if write else "BEGIN")
@@ -69,14 +74,19 @@ class State:
         except BaseException as error:
             if isinstance(error, sqlite3.Error):
                 self.failed = True
-            if connection.in_transaction:
+            if connection is not None and connection.in_transaction:
                 try:
                     connection.execute("ROLLBACK")
                 except sqlite3.Error:
                     self.failed = True
             raise
         finally:
-            connection.close()
+            if connection is not None:
+                try:
+                    connection.close()
+                except sqlite3.Error:
+                    self.failed = True
+                    raise
 
     def save_task(self, task, *, connection=None):
         if connection is None:

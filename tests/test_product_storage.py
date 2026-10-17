@@ -146,6 +146,21 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(self.store.recover(commit["id"])["status"], "committed")
         self.assertEqual((self.source / "a.txt").read_bytes(), b"user")
 
+    def test_committed_missing_content_reports_conflict_without_reverting_other_files(self):
+        task_id, work = self.task({"a.txt": b"old a", "b.txt": b"old b"})
+        (work / "a.txt").write_bytes(b"new a")
+        (work / "b.txt").write_bytes(b"new b")
+        commit = self.publish(task_id)
+        (self.source / "a.txt").unlink()
+        recovered = self.store.recover(commit["id"])
+        self.assertEqual(recovered["status"], "committed")
+        self.assertEqual([item["path"] for item in recovered.get("conflicts", [])], ["a.txt"])
+        self.assertEqual((self.source / "b.txt").read_bytes(), b"new b")
+        self.assertEqual(self.store.read_version(next(item["before"] for item in recovered["items"] if item["path"] == "a.txt")), b"old a")
+        (self.source / "a.txt").write_bytes(b"user restored content")
+        self.assertEqual(self.store.recover(commit["id"])["conflicts"], [])
+        self.assertEqual((self.source / "a.txt").read_bytes(), b"user restored content")
+
     def test_source_hardlink_and_workspace_hardlink_are_rejected(self):
         (self.source / "a.txt").write_bytes(b"a")
         os.link(self.source / "a.txt", self.source / "alias.txt")

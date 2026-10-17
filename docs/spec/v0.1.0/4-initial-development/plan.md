@@ -307,6 +307,22 @@ M01-R2.2 当前范围完成。R5.1 保留未勾，继续清点 IPC 程序操作�
 
 M01-R5.4 完成。R5.1 剩余 IPC / 生命周期 / 交付 / 持久控制结构和 R6 文件 / SQLite 完整故障闭环继续推进；Desktop G2、真实模型语义、物理 Windows 休眠和 CI 未验，无远端写入，Goal 保持 active。
 
+## 2026-10-18 第七批：SQLite 故障隔离与文件恢复闭环
+
+本批在本地 0feeb29cb1ee75d4c0b8185b7a38d6aa3ca151c5 上补齐 M01-R6.4 / R6.6，未迁移真实用户数据。复现并修复：连接建立失败未置失败标志；缺库重启错误地创建空权威库；已 committed 输出缺失仍继续补登记；健康 / 停止等待失败发布锁；重复依赖触发 SQL 唯一约束。每项先以回归复现，再修共享入口，不新增恢复框架或依赖。
+
+State.transaction 把建立连接放入同一异常边界，sqlite3.Error 隔离当前根。数字版本私有配置、versions 或 workspaces 表明已有持久状态，缺库时明确拒绝启动；只有队列 / launch 的首次启动仍可正常初始化。真实配置指针写失败保留旧当前版本及孤立新文件，重启后跳过已占用版本，不覆盖失败历史。Runtime 登记按原顺序去重依赖，保留幂等任务身份。
+
+Store 对已 committed 清单只核对输出 / 新增目录存在及路径安全，缺失时保留 committed 与前后版本，Runtime 标记 recovery_conflict 并暂停重叠范围写入；不撤销其他已提交文件，不覆盖用户再编辑。人工修复后重启只补后继登记，原模型调用次数、结果版本不变。未 committed 的部分 / 全部文件已写仍沿原清单校验与撤销。既有 prepare 已在一个 SQL 事务保存清单与 task.commit_id；输入 / 结果版本先落盘。健康 / 停止不等待数据发布锁，仍先认证与校验，真正停树 / 排空沿原服务生命周期。
+
+永久测试新增 8 项，保护连接故障 / 缺库不重置权威状态、首次采集兼容、重复依赖、孤立配置版本、存活进程真实 SQL 写失败、已提交缺失内容及恢复、健康 / 停止可用性。真实 SQLite BEGIN IMMEDIATE 竞争分别在已写 1 / 2 个文件后制造写超时，并非 mock SQL 异常；验证业务 API 拒绝半成品读取、停树可结束、数据库仍不可写时不谎报恢复，解锁重启安全撤销、预算 1 次及前后版本保留、无模型重跑 / 后继登记，重复恢复幂等。原 Windows 文件中断 / 用户冲突及 Runtime / Config / Startup / Web / Corrections 组继续通过。
+
+最终完整产品 **205 tests / OK，95.213s**（seventh-product-complete.log），Chromium **5 tests / OK，18.661s**（seventh-browser-final.log）。一次性 actual AIAgent / PM 进程 + 真实监听 run_service 探针在第一次预算许可前用实际 SQLite 写锁超时：上游生成请求 **0**，API 隔离，stop_background 在数据库仍锁定时完成，真实 Job / PM 子进程与服务线程退出；重启次数 0、任务 failed，无语义验收。证据 seventh-live-pm-results.json、seventh-live-service-results.json 及对应日志在忽略目录 .artifacts。合成离线迁移复跑通过停写门禁、整根备份、幂等核验、保留预算、零新写入回退及恢复采集后拒绝旧备份回退（seventh-migration-final.log）。
+
+收尾 Ruff、uv lock --check --offline、32 份文档 / 445 条本地链接及 git diff --check 通过；探针 / 浏览器 / 测试进程均已退出。
+
+R6.4 / R6.6 已勾选，R6 全部完成；统一 Design、M01 / M08 Plan、README 与待办同步。下一步仍有 R5.1 的 IPC / 生命周期 / 交付 / 持久控制结构清点及启动接入，未把本批当整体完成。Goal 最新查询为 usageLimited，未自行改状态或新建替代 Goal；本轮 heartbeat 已授权的本地实施已完成。Desktop G2、获准真实模型语义、物理休眠及 GitHub CI 未验，无远端写入。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

@@ -8,6 +8,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -52,6 +53,24 @@ class StateTests(unittest.TestCase):
         with ThreadPoolExecutor(max_workers=2) as pool:
             versions = list(pool.map(lambda _: Config(Store(first_home)).read()["version"], range(2)))
         self.assertEqual(versions, [1, 1])
+
+    def test_first_start_accepts_existing_capture_and_launch_configuration(self):
+        home = Path(self.temp) / "captured-before-first-start"
+        (home / "config").mkdir(parents=True)
+        (home / "config/launch.json").write_text('{}', encoding="utf-8")
+        queue = home / "codex/queue/synthetic.jsonl"
+        queue.parent.mkdir(parents=True)
+        queue.write_text('{"role":"user","text":"synthetic first capture"}\n', encoding="utf-8")
+        self.assertEqual(Config(Store(home)).read()["version"], 1)
+        self.assertIn("synthetic first capture", queue.read_text(encoding="utf-8"))
+
+    def test_repeated_dependency_is_one_edge_without_quarantining_the_database(self):
+        parent = self.runtime.register("query", {}, "dependency-parent")
+        child = self.runtime.register("query", {}, "dependency-child", dependencies=[parent["id"], parent["id"]])
+        self.assertEqual(child["dependencies"], [parent["id"]])
+        self.assertEqual(self.runtime.task(child["id"])["dependencies"], [parent["id"]])
+        self.assertEqual(self.runtime.register("query", {}, "dependency-child", dependencies=[parent["id"]])["id"], child["id"])
+        self.assertFalse(self.store.state.failed)
 
     def test_nested_lock_excludes_other_threads_and_releases_after_an_exception(self):
         waiting, acquired = threading.Event(), threading.Event()
@@ -151,6 +170,51 @@ class StateTests(unittest.TestCase):
             Store(old)
         self.assertFalse((old / "state.sqlite3").exists())
 
+    def test_connection_failure_quarantines_the_live_root_until_restart(self):
+        task = self.runtime.register("query", {}, "connection-failure")
+        database = self.home / "state.sqlite3"
+        unavailable = self.home / "state.sqlite3.offline"
+        database.rename(unavailable)
+        try:
+            with self.assertRaises(sqlite3.OperationalError):
+                self.config.read()
+            self.assertTrue(self.store.state.failed)
+            self.assertFalse(database.exists(), "A failed read must not create an empty replacement database")
+            with self.assertRaisesRegex(ValueError, "database.*missing"):
+                Store(self.home)
+            self.assertFalse(database.exists())
+        finally:
+            if database.exists():
+                database.unlink()  # Only a replacement produced by the failing implementation in this temporary fixture.
+            unavailable.rename(database)
+        self.runtime.dispatch()
+        self.assertEqual(self.runtime.task(task["id"])["status"], "queued")
+        app = create_app(self.runtime)
+        with TestClient(app, base_url=app.state.control.url) as client:
+            headers = {"Authorization": "Bearer " + app.state.control.token}
+            self.assertEqual(client.get("/v1/config", headers=headers).status_code, 503)
+            self.assertFalse(client.get("/v1/health", headers=headers).json()["ready"])
+        restarted = Store(self.home)
+        self.assertFalse(restarted.state.failed)
+        self.assertEqual(Config(restarted).read()["version"], 1)
+
+    def test_failed_config_pointer_write_keeps_the_old_version_and_does_not_reuse_orphan_bytes(self):
+        with closing(sqlite3.connect(self.store.state.path, isolation_level=None)) as blocker:
+            blocker.execute("BEGIN IMMEDIATE")
+            with self.assertRaises(sqlite3.OperationalError):
+                self.config.update(1, {"llm": {"model": "synthetic orphan"}})
+            self.assertTrue(self.store.state.failed)
+            self.assertEqual(self.config.read()["version"], 1)
+            blocker.execute("ROLLBACK")
+        orphan = self.home / "config/2.json"
+        original_bytes = orphan.read_bytes()
+        restarted = Config(Store(self.home))
+        self.assertEqual(restarted.read()["version"], 1)
+        self.assertEqual(restarted.read()["values"]["llm"]["model"], "")
+        updated = restarted.update(1, {"llm": {"model": "synthetic current"}})
+        self.assertGreater(updated["version"], 2)
+        self.assertEqual(orphan.read_bytes(), original_bytes)
+
     def test_busy_database_refuses_generation_and_still_stops_its_tree(self):
         entered, release, stopped = threading.Event(), threading.Event(), threading.Event()
         self.addCleanup(release.set)
@@ -186,6 +250,89 @@ class StateTests(unittest.TestCase):
         restarted.recover_tasks()
         self.assertEqual(restarted.task(task["id"])["model_calls"], 0)
         self.assertEqual(restarted.task(task["id"])["status"], "failed")
+
+    def test_live_database_write_failure_recovers_partial_and_all_written_files_without_reexecution(self):
+        for written_count in (1, 2):
+            with self.subTest(written_files=written_count):
+                root = Path(self.temp) / ("publication-" + str(written_count))
+                source = root / "source"
+                source.mkdir(parents=True)
+                for name in ("a", "b"):
+                    (source / (name + ".txt")).write_bytes(("old-" + name).encode())
+                store = Store(root / "data")
+                config = Config(store)
+                config.update(1, {"workspace": {"paths": [str(source)]}})
+                locked, unavailable, stopped = threading.Event(), threading.Event(), threading.Event()
+                calls, snapshots, successors = [], [], []
+                class Job:
+                    def close(self):
+                        stopped.set()
+                def execute(task, control):
+                    control.attach_job(task["id"], Job())
+                    control.reserve_generation(task["id"])
+                    calls.append(task["id"])
+                    for name in ("a", "b"):
+                        (Path(task["workspace"]) / (name + ".txt")).write_bytes(("new-" + name).encode())
+                    return {"result": "synthetic publication"}
+                runtime = Runtime(store, config, execute, lambda task, result: None,
+                    after_commit=lambda task: successors.append(task["id"]))
+                task = runtime.register("knowledge", {}, "live-sql-failure", scope={"root": str(source)})
+                original = store._save_commit
+                with closing(sqlite3.connect(store.state.path, isolation_level=None, check_same_thread=False)) as blocker:
+                    def save(record):
+                        try:
+                            original(record)
+                        except sqlite3.Error:
+                            unavailable.set()
+                            raise
+                        if record["status"] == "prepared" and not locked.is_set() and sum(
+                                item["kind"] == "file" and item["state"] == "applied" for item in record["items"]) == written_count:
+                            blocker.execute("BEGIN IMMEDIATE")
+                            snapshots.append([(source / (name + ".txt")).read_bytes() for name in ("a", "b")])
+                            locked.set()
+                    try:
+                        with patch.object(store, "_save_commit", side_effect=save):
+                            runtime.dispatch()
+                            self.assertTrue(locked.wait(3))
+                            self.assertEqual(snapshots, [[b"new-a", b"new-b" if written_count == 2 else b"old-b"]])
+                            self.assertTrue(unavailable.wait(7), "The real SQLite writer did not time out")
+                            self.assertTrue(store.state.failed)
+                            app = create_app(runtime)
+                            with TestClient(app, base_url=app.state.control.url) as client:
+                                headers = {"Authorization": "Bearer " + app.state.control.token}
+                                for path in ("/v1/config", "/v1/history", "/v1/knowledge"):
+                                    self.assertEqual(client.get(path, headers=headers).status_code, 503)
+                                health = client.get("/v1/health", headers=headers)
+                                self.assertEqual(health.status_code, 200)
+                                self.assertFalse(health.json()["ready"])
+                            runtime.close()
+                            self.assertTrue(stopped.is_set())
+                            self.assertTrue(blocker.in_transaction, "Cleanup depended on the database becoming writable")
+                            self.assertNotEqual(runtime.wait(task["id"])["status"], "succeeded")
+                    finally:
+                        if blocker.in_transaction:
+                            blocker.execute("ROLLBACK")
+                        runtime.close()
+                restarted_store = Store(store.home)
+                restarted = Runtime(restarted_store, Config(restarted_store), execute, lambda task, result: None,
+                    after_commit=lambda task: successors.append(task["id"]))
+                try:
+                    restarted.recover_tasks()
+                    saved = restarted.task(task["id"])
+                    self.assertEqual(saved["status"], "failed")
+                    self.assertEqual(saved["model_calls"], 1)
+                    commit = restarted_store.read_commit(saved["commit_id"])
+                    self.assertEqual(commit["status"], "rolled_back")
+                    for name in ("a", "b"):
+                        self.assertEqual((source / (name + ".txt")).read_bytes(), ("old-" + name).encode())
+                        item = next(item for item in commit["items"] if item["path"] == name + ".txt")
+                        self.assertEqual(restarted_store.read_version(item["after"]), ("new-" + name).encode())
+                    self.assertEqual(calls, [task["id"]])
+                    self.assertEqual(successors, [])
+                    restarted.recover_tasks()
+                    self.assertEqual(restarted.task(task["id"])["model_calls"], 1)
+                finally:
+                    restarted.close()
 
 
 if __name__ == "__main__":

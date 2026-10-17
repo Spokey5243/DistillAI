@@ -341,7 +341,22 @@ class Store:
         with self.locked():
             record = self.read_commit(commit_id)
             if record["status"] == "committed":
-                self._cleanup_backups(record)
+                conflicts = []
+                for item in record["items"]:
+                    if item["kind"] == "file" and item["after"] is None:
+                        continue
+                    target = Path(record["source"]) / _relative(item["path"])
+                    try:
+                        with pinned_path(target) as parent, FileHandle(target, parent=parent,
+                                directory=item["kind"] == "directory"):
+                            pass
+                    except OSError as error:
+                        conflicts.append({"path": item["path"], "error": type(error).__name__})
+                if record.get("conflicts", []) != conflicts:
+                    record["conflicts"] = conflicts
+                    self._save_commit(record)
+                if not conflicts:
+                    self._cleanup_backups(record)
                 return record
             if record["status"] == "rolled_back":
                 return record

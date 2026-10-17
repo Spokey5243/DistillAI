@@ -182,6 +182,44 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(calls, [task["id"]])
         self.assertEqual((self.workspace / "a.txt").read_bytes(), b"agent")
 
+    def test_missing_committed_output_blocks_post_registration_until_repaired(self):
+        calls, registrations = [], []
+        target = self.workspace / "a.txt"
+        target.write_bytes(b"original")
+        def execute(task, control):
+            control.reserve_generation(task["id"])
+            calls.append(task["id"])
+            (Path(task["workspace"]) / "a.txt").write_bytes(b"agent")
+            return {"records": ["a"]}
+        def register(task):
+            registrations.append(task["id"])
+            if len(registrations) == 1:
+                raise OSError("synthetic post-registration outage")
+        runtime = self.runtime(execute, after_commit=register)
+        task = self.submit(runtime, scope={"root": str(self.workspace)})
+        runtime.dispatch()
+        saved = runtime.wait(task["id"])
+        self.assertEqual(saved["status"], "validating")
+        target.unlink()
+        restarted = self.runtime(execute, after_commit=register)
+        restarted.recover_tasks()
+        blocked = restarted.task(task["id"])
+        self.assertEqual(blocked["status"], "recovery_conflict")
+        self.assertEqual(blocked["model_calls"], 1)
+        self.assertEqual(registrations, [task["id"]])
+        self.assertEqual(self.store.read_commit(saved["commit_id"])["status"], "committed")
+        following = self.submit(restarted, scope={"root": str(self.workspace)}, trigger="after-missing-output")
+        restarted.dispatch()
+        self.assertEqual(restarted.task(following["id"])["status"], "queued")
+        target.write_bytes(b"user restored content")
+        repaired = self.runtime(execute, after_commit=register)
+        repaired.recover_tasks()
+        self.assertEqual(repaired.task(task["id"])["status"], "succeeded")
+        self.assertEqual(repaired.task(task["id"])["result_version"], saved["result_version"])
+        self.assertEqual(repaired.task(task["id"])["model_calls"], 1)
+        self.assertEqual(calls, [task["id"]])
+        self.assertEqual(target.read_bytes(), b"user restored content")
+
     def test_stale_episode_analysis_cannot_publish(self):
         episode_id = uuid.uuid4().hex
         folder = self.store.home / "episodes"

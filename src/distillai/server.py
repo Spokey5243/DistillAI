@@ -1,5 +1,5 @@
 """Authenticated FastAPI business API and same-origin Web application."""
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass, field
 import json
 import os
@@ -279,10 +279,9 @@ class _API:
     def stop(self):
         runtime = self.runtime
         path, query = self.path, self.query
-        with runtime.store.locked():
-            runtime._accepting = False
-            self.server.stopping.set()
-            runtime.wake()
+        runtime._accepting = False
+        self.server.stopping.set()
+        runtime.wake()
         return {"stopping": True}, 202
 
     def health(self):
@@ -570,7 +569,7 @@ def create_app(runtime, *, control=None, lifespan=None):
                             for item in error.errors(include_input=False, include_url=False)):
                         code = "invalid_task_request"
                     raise _APIError(422, code) from None
-            with api.runtime.store.locked():
+            with nullcontext() if name in {"health", "stop"} else api.runtime.store.locked():
                 if api.runtime.store.state.failed and name not in {"health", "stop"}:
                     raise _APIError(503, "control_state_unavailable")
                 result, status = getattr(api, name)()
