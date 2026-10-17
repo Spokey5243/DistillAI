@@ -2,23 +2,21 @@
 from copy import deepcopy
 from contextlib import contextmanager, ExitStack
 import json
-import re
 from pathlib import Path
 import sqlite3
 import threading
 import time
 import uuid
-from typing import Any, NotRequired, TypedDict, get_args
+from typing import Any, NotRequired, TypedDict
 
 from pydantic import ConfigDict, TypeAdapter, with_config
 
 from .storage import ConflictError, _identifier, _hash, _relative
 from .windows import canonical_directory, FileHandle, pinned_path
-from .sources import Identifier
+from .sources import Identifier, QUEUE_REF
 from .state import PublicationScope, TaskKind
 
 
-KINDS = set(get_args(TaskKind))
 TERMINAL = {"succeeded", "failed", "cancelled", "recovery_conflict"}
 
 
@@ -32,6 +30,7 @@ class RegisterArgs(TypedDict):
 
 
 PUBLICATION_SCOPE = TypeAdapter(PublicationScope)
+REGISTER_ARGS = TypeAdapter(RegisterArgs)
 
 
 class BudgetError(RuntimeError):
@@ -91,8 +90,9 @@ class Runtime:
                                ensure_ascii=False, allow_nan=False).encode("utf-8"))
 
     def register(self, kind, inputs, trigger, *, scope=None, dependencies=(), prompt=""):
-        if kind not in KINDS or not isinstance(inputs, dict) or not isinstance(trigger, str):
-            raise ValueError("Invalid task kind, fixed input or trigger")
+        dependencies = list(dependencies)
+        REGISTER_ARGS.validate_python({"kind": kind, "inputs": inputs, "trigger": trigger,
+            "scope": scope, "dependencies": dependencies})
         if kind in {"query", "screening"} and scope is not None:
             raise ValueError("Read-only tasks have no publication scope")
         scope = self._scope(scope)
@@ -125,11 +125,8 @@ class Runtime:
         return task
 
     def register_increment(self, ref, *, scope=None, prompt="", trigger="material"):
-        if not isinstance(ref, dict) or set(ref) != {"connector", "session_key", "line_start", "line_end"}:
-            raise ValueError("Invalid source range")
-        if ref["connector"] != "codex" or not isinstance(ref["session_key"], str) or not re.fullmatch(r"[A-Za-z0-9_-]+", ref["session_key"]):
-            raise ValueError("Invalid source session")
-        if any(type(ref[name]) is not int for name in ("line_start", "line_end")) or not 1 <= ref["line_start"] <= ref["line_end"]:
+        QUEUE_REF.validate_python(ref)
+        if ref["line_start"] > ref["line_end"]:
             raise ValueError("Invalid ordered source range")
         scope = self._scope(scope)
         incoming = {"source_refs": [deepcopy(ref)]}

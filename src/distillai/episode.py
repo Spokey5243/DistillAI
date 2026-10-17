@@ -9,6 +9,7 @@ from pydantic import BeforeValidator, ConfigDict, Field, TypeAdapter, with_confi
 
 from .sources import DraftRecordRef, DRAFT_RECORD_REFS, Identifier, NonblankText, QueueRef, QUEUE_REFS, RecordRef, SessionKey, Version, read_source, queue_path, record_submission
 from .storage import atomic_json, _hash, _identifier, ConflictError
+from .tools import READ_SOURCE_ARGS
 
 
 def _positions(refs, key, *, limit=None):
@@ -360,8 +361,9 @@ def evaluate(runtime, task_id, args):
 def read_episode_source(runtime, task_id, args):
     with runtime.store.locked():
         task = runtime._live(task_id)
-        if task["kind"] != "episode" or task["status"] != "running" or not isinstance(args, dict) or set(args) != {"ref"}:
+        if task["kind"] != "episode" or task["status"] != "running":
             raise ValueError("Historical source reads require a prepared episode task")
+        READ_SOURCE_ARGS.validate_python(args)
         inputs = _execution(runtime, task)
         positions = set(_positions([args["ref"]], inputs["session_key"], limit=inputs["line_end"]))
         allowed = set(_positions(inputs["source_refs"], inputs["session_key"]))
@@ -737,10 +739,10 @@ def _validate_correction(runtime, task, result):
     runtime._check_input(task)
     if result is None:
         return
+    EPISODE_RESULT.validate_python(result)
     inputs = _execution(runtime, task)
     expected = {item["episode_id"]: item["source_refs"] for item in inputs["assignments"]}
-    fields = {"episode_refs", "closed_episode_refs", "revised_episode_refs", "buffered_source_refs", "reason"}
-    if (not isinstance(result, dict) or set(result) != fields or result["reason"] != inputs["reason"]
+    if (result["reason"] != inputs["reason"]
             or result["closed_episode_refs"] or result["buffered_source_refs"]
             or _record_refs(result["episode_refs"]) != set(expected) or _record_refs(result["revised_episode_refs"]) != set(expected)):
         raise ValueError("Correction result must describe the requested revised records")
@@ -751,13 +753,13 @@ def _validate_correction(runtime, task, result):
     validate_reanalysis_workspace(runtime, task)
     for identifier, refs in expected.items():
         record = json.loads(files["episodes/" + identifier + ".json"])
+        EPISODE_RECORD.validate_python(record)
         old = inputs["episode_records"][identifier]
         if (record.get("source_refs") != refs or set(record) != set(old)
                 or any(record[name] != old[name] for name in old if name not in {"source_refs", "boundary_basis", "summary"})):
             raise ValueError("Correction changed fields outside the explicit assignment")
         basis = record["boundary_basis"]
-        if (not isinstance(basis, dict) or set(basis) != {"reason", "source_refs", "evaluation_versions"}
-                or basis["reason"] != inputs["reason"] or basis["evaluation_versions"]
+        if (basis["reason"] != inputs["reason"] or basis["evaluation_versions"]
                 or not _positions(basis["source_refs"], inputs["session_key"])
                 or not set(_positions(basis["source_refs"], inputs["session_key"])).issubset(_positions(refs, inputs["session_key"]))):
             raise ValueError("Correction basis must describe the newly assigned original sources")

@@ -15,6 +15,21 @@ A, B, E, O, H = (character * 32 for character in ("1", "2", "e", "c", "d"))
 
 
 class CognitionTests(unittest.TestCase):
+    def test_invalid_reanalysis_dependencies_are_not_adopted_or_rewritten(self):
+        entry = {"record_kind": "knowledge", "record_ref": {"id": A, "version": "a" * 64},
+            "previous_episode_ref": {"id": E, "version": "b" * 64},
+            "episode_ref": {"id": E, "version": "c" * 64}, "status": "waiting", "reason": "synthetic revision",
+            "revision_source_refs": [self.ref]}
+        path = self.store.home / "cognition/reanalysis.json"
+        path.parent.mkdir(exist_ok=True)
+        for changed in ({"status": "unknown"}, {"status": "ready"}, {"resolved_by": True},
+                        {"extra": "ignored"}, {"record_ref": {"id": A, "version": "not-a-version"}}):
+            atomic_json(path, {"entries": [{**entry, **changed}]})
+            before = path.read_bytes()
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                cognition.reanalysis(self.store, A)
+            self.assertEqual(path.read_bytes(), before)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

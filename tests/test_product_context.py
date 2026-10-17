@@ -291,12 +291,15 @@ class ContextTests(unittest.TestCase):
         selection = context.start_selection(runtime, "synthetic", "initial question")
         complete(runtime.task(selection["task_id"]))
         original = context.selection_status(runtime, selection["round_key"])["selected"]
-        waiting = {"entries": [{"record_ref": original[0]["record_refs"][0], "episode_ref": ep_ref, "status": "waiting"}]}
+        waiting = {"entries": [{"record_kind": "knowledge", "record_ref": original[0]["record_refs"][0],
+            "previous_episode_ref": ep_ref, "episode_ref": ep_ref, "status": "waiting",
+            "reason": "synthetic dependency revision", "revision_source_refs": [self.ref]}]}
         (self.store.home / "cognition").mkdir()
         atomic_json(self.store.home / REANALYSIS, waiting)
         self.assertEqual(context.restore_selection(runtime, "synthetic")["selected"], original)
         self.assertNotIn("task_id", context.start_selection(runtime, "synthetic", "waiting question"))
         waiting["entries"][0]["status"] = "ready"
+        waiting["entries"][0]["resolved_by"] = "a" * 32
         atomic_json(self.store.home / REANALYSIS, waiting)
         self.assertNotIn("task_id", context.start_selection(runtime, "synthetic", "ready but not prepared"))
         complete(context.register_prepare(runtime, "synthetic", ep_ref, 1, "analysis complete", force=True))

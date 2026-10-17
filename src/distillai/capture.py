@@ -5,6 +5,9 @@ import re
 import socket
 import time
 from urllib.parse import urlsplit
+from typing import Annotated, TypedDict
+
+from pydantic import ConfigDict, Field, TypeAdapter, with_config
 
 from .sources import entry, now, queue_path, utc
 from .storage import atomic_json
@@ -17,6 +20,15 @@ TRIVIAL_SHELL = ("cd", "ls", "pwd", "echo", "cat", "head", "tail", "which", "typ
                  "fd", "wc", "sed", "awk", "less", "more", "stat", "file", "tree", "du", "df", "env", "printf",
                  "sort", "uniq", "cut", "jq", "open", "true", "sleep", "date",
                  "git status", "git log", "git diff", "git show", "git branch")
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class CaptureCursor(TypedDict):
+    count: Annotated[int, Field(ge=0)]
+    at: str
+
+
+CAPTURE_CURSOR = TypeAdapter(CaptureCursor)
 
 
 def session_key(value):
@@ -88,9 +100,9 @@ def diagnostic(home, event, key, stage, error):
 
 def _cursor(path, total):
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        value = CAPTURE_CURSOR.validate_json(path.read_bytes())
         count = value["count"]
-        if set(value) == {"count", "at"} and type(count) is int and 0 <= count <= total and utc(value["at"]) is not None:
+        if count <= total and utc(value["at"]) is not None:
             return count
     except (OSError, ValueError, TypeError, KeyError):
         pass

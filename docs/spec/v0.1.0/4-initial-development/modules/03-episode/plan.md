@@ -64,6 +64,10 @@ M01 停机排空修复覆盖扫描、独立 exploration 与到期回调：先 pa
 
 state() 读取时复用已有 SessionState，核对 session 与所选队列；未知字段、布尔处理位置或跨 session 游标不被采用 / 改写，已存关键词保持原值。定向组、完整产品和实际 PM AIAgent Episode → M04 → M05 链通过，详见[总 Plan](../../plan.md)第十二批。没有新的生命周期推断，Desktop G2 / 终止信号条件不变。
 
+## 2026-10-18 第十三批：复用来源与归属纠错模型
+
+历史来源参数复用 ReadSourceArgs，归属纠错的结果 / episode 结构复用原模型，去掉重复 required / 类型 / 字段集合遍历；新增引句范围、原字段保留、关闭摘要和实际来源顺序判断继续保留。原纠错组及实际 AIAgent 的 11 / 12 次合成链通过，完整证据见[总 Plan](../../plan.md)第十三批；未新增 Desktop 推断或改变旧边界规则。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

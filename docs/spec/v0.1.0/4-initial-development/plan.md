@@ -381,6 +381,22 @@ M07 查询记录区分直接结果 / 后台任务 / 提前取消，反馈区分 
 
 真实 FastMCP PythonStdioTransport 两工具、精确查询 / 严格参数 / 反馈幂等、stdio 退出后的预启动测试后台存活通过，零生成（twelfth-stdio.log）；服务由测试管理，不证明独立冷启动或 Desktop。合成离线迁移 / 重复核对 / 预算保留 / 回退 / 新采集拒绝覆盖通过（twelfth-migration.log），一次性校验非法配置不建版本、错 hash 反馈保留原字节（twelfth-extra-records.log）。全范围 Ruff、离线锁、32 份文档 / 461 个本地链接及 diff 检查通过，测试与 PM / stdio 探针均已退出。统一 Design、M01 / M03 / M06 / M07 和待办同步，material_revision 仍为 3；R5.1 继续审计 M05 重分析依赖及启动 / 采集控制结构，再做 R4.2 清理。无远端写入，Goal 不标整体完成。
 
+## 2026-10-18 第十三批：严格结构及复用清理收尾
+
+本批在 d0481a1d0e1b467d0112d6c3cbf961fba3398d4c 上续接 M01-R5.1 / R4.2。M05 重分析依赖、启动实例 / health / PM 检查事实与采集游标接入严格模型；非法状态、版本、布尔协议 / 字符串 ready 和未知字段在采用前拒绝，坏记录保留原字节。Runtime 登记 / 增量来源、episode 历史来源参数和纠错结果复用既有 TypeAdapter，删除重复字段 / required / 枚举遍历，保留来源归属、跨版本、引用范围及权限判断。启动地址补拒绝只有 password 的 authority，实例清理失败只记白名单诊断并保留记录。
+
+固定 Hermes 六个同步文件 / Shell 工具在原 registry handler 前直接复用其发布的 JSON Schema，由 PM 已有 jsonschema 校验；handler 签名 / kwargs、实际文件 / Shell 处理及调用预算不变。实际 PM registry 探针六工具非法参数均未到达 handler，副作用为零（thirteenth-upstream-schema.log），正常 AIAgent 工具链继续通过。环境检查补核对 PM 现有 jsonschema；未安装 PM 包、修改上游或建立第二套工具执行器。采集通知复核保持 200ms 总截止、不读响应、不启动后台；游标坏值仍从原文重采且保留旧文件（thirteenth-cursor-audit.log）。
+
+新增五项永久回归，先复现坏重分析状态 / 实例元信息和 health 被采用、密码地址被接受及非法工具参数到达 handler，再转绿。完整组暴露旧 Context fixture 缺失真实记录必填字段，补齐 fixture 后复跑，没有放宽生产校验。定向认知 / 纠错 / 采集 / 启动 **40 tests / OK，24.708s**（thirteenth-focused.log），Runtime / 纠错 / 工具 **32 tests / OK，6.482s**（thirteenth-schema-green.log），Context **13 tests / OK，2.845s**（thirteenth-context.log）。最终完整产品 **229 tests / OK，96.782s**（thirteenth-product-final.log），实际 Chromium **5 tests / OK，24.953s**（thirteenth-browser.log）；首轮旧 fixture 失败保留原日志，不当成通过证据。
+
+实际 PM AIAgent 七场景 **43** 个合成 provider 到达请求，Episode → M04 → M05 **22** 次、真实 Tavily keyless → M04 → M07 → 用户编辑 **14** 次、归属纠错 / 独立认知纠错 **11** 次、新材料旧边界修订 **12** 次生成通过；证据 thirteenth-direct-hermes.log、thirteenth-episode.log、thirteenth-expansion.log、thirteenth-corrections.log、thirteenth-material.log。生成 provider 仍是 localhost 合成响应，不作为真实模型语义验收。PM 环境 / SHA / AIAgent 检查通过，实际导入产品框架集合为空，已有 jsonschema 4.26.0（thirteenth-environment.log、thirteenth-pm-import.log）。
+
+真实 FastMCP Python StdioTransport 的两工具、精确查询 / 严格参数 / 反馈幂等及 stdio 退出后的预启动测试后台存活通过（thirteenth-stdio.log），不作为独立冷启动或 Desktop 证据。合成离线迁移、重复核对、预算保留、整根回退及新采集拒绝覆盖通过（thirteenth-migration.log）；旧采集合成 UTF-8 / 并发 / 隔离 / fail-open / 通知通过，Push Guard **16 tests / OK，31.346s**（thirteenth-push-guard.log）。全部本批测试 / PM / stdio 探针进程已退出。
+
+全范围 Ruff、离线锁检查、32 份文档 / 465 个本地链接及 git diff 检查通过。
+
+26 份生产 Python 的复用清点确认 BaseHTTPRequestHandler / ThreadingHTTPServer、旧模型路由、自定义 Formatter 和重复 Tavily 请求实现均无剩余调用（thirteenth-reuse-audit.json）。保留库未覆盖的 Windows 根句柄相对操作 / 精确 FILETIME / 恢复挂起窄绑定，以及持久额度、固定版本 / 来源归属、原子发布恢复和有界不等待采集通知等产品契约。M01-R5.1 与 R4.2 据此勾选；Design、README、M01 / M02 / M03 / M05 及待办同步，material_revision 仍为 3，无有效持久格式变化或真实数据迁移。下一轮审计 R1.6 的客户端重建 / 断流 / 连接拒绝 / 重启续额等实际 SDK 边界证据，并推进其余依赖满足的本地接入；R3.4、G2、物理休眠和真实模型语义仍未完成，无远端写入，Goal 不标整体完成。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

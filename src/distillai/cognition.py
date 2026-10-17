@@ -7,7 +7,7 @@ from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
 from pydantic import ConfigDict, Field, TypeAdapter, with_config
 from .knowledge import MaintenanceResult, RecordKind as ContentKind, validate_collection as validate_knowledge
-from .sources import DraftRecordRef, Identifier, NonblankText, RecordRef, SourceRef, Version, read_source, utc, now, contains, record_submission
+from .sources import DraftRecordRef, Identifier, NonblankText, RecordRef, SourceRef, Version, VersionedRef, read_source, utc, now, contains, record_submission
 from .storage import _identifier, _hash, atomic_json, ConflictError
 
 
@@ -110,6 +110,29 @@ class CognitionResult(MaintenanceResult):
     hypothesis_refs: list[DraftRecordRef]
 
 
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class WaitingReanalysis(TypedDict):
+    record_kind: ContentKind | Literal["hypothesis"]
+    record_ref: RecordRef
+    previous_episode_ref: RecordRef
+    episode_ref: RecordRef
+    status: Literal["waiting"]
+    reason: NonblankText
+    revision_source_refs: list[SourceRef]
+    submission_ref: NotRequired[VersionedRef]
+
+
+class ResolvedReanalysis(WaitingReanalysis):
+    status: Literal["ready"]
+    resolved_by: Identifier
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class ReanalysisState(TypedDict):
+    entries: list[WaitingReanalysis | ResolvedReanalysis]
+
+
+REANALYSIS_STATE = TypeAdapter(ReanalysisState)
 OBSERVATIONS = TypeAdapter(list[Observation])
 INLINE_HYPOTHESIS = TypeAdapter(InlineHypothesis)
 SHARED_HYPOTHESIS = TypeAdapter(SharedHypothesis)
@@ -123,7 +146,7 @@ IDENTIFIERS = TypeAdapter(list[Identifier])
 def reanalysis(store, record_id=None):
     with store.locked():
         path = store.home / REANALYSIS
-        entries = json.loads(path.read_text(encoding="utf-8"))["entries"] if path.exists() else []
+        entries = REANALYSIS_STATE.validate_json(path.read_bytes())["entries"] if path.exists() else []
         return [item for item in entries if record_id is None or item["record_ref"]["id"] == record_id]
 
 
@@ -151,6 +174,7 @@ def validate_reanalysis_workspace(runtime, task):
 
 
 def _save_reanalysis(runtime, task, entries):
+    REANALYSIS_STATE.validate_python({"entries": entries})
     path = Path(task["workspace"]) / REANALYSIS
     path.parent.mkdir(exist_ok=True)
     atomic_json(path, {"entries": entries})

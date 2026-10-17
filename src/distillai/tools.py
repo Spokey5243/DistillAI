@@ -1,5 +1,6 @@
 """Read-only task snapshot tools; business modules prepare and validate their snapshots."""
 import json
+from functools import wraps
 from typing import TypedDict
 
 from pydantic import ConfigDict, TypeAdapter, ValidationError, with_config
@@ -22,6 +23,29 @@ class ReadSourceArgs(TypedDict):
 
 QUERY_RECORDS_ARGS = TypeAdapter(QueryRecordsArgs)
 READ_SOURCE_ARGS = TypeAdapter(ReadSourceArgs)
+
+
+def guard_upstream_tools(registry, definitions, names):
+    from jsonschema.validators import validator_for
+    for tool in definitions:
+        definition = tool["function"]
+        name = definition["name"]
+        if name not in names:
+            continue
+        schema = definition["parameters"]
+        validator_class = validator_for(schema)
+        validator_class.check_schema(schema)
+        validator = validator_class(schema)
+        entry = registry.get_entry(name)
+        handler = entry.handler
+
+        @wraps(handler)
+        def checked(arguments, _handler=handler, _validator=validator, **kwargs):
+            if not _validator.is_valid(arguments):
+                return json.dumps({"error": {"code": "invalid_tool_arguments"}})
+            return _handler(arguments, **kwargs)
+
+        entry.handler = checked
 
 
 def register_read_tools(registry, inputs, *, on_records=None, on_sources=None, on_missing_source=None):

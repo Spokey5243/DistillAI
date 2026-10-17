@@ -49,11 +49,11 @@ SQLite 增补：Create `src/distillai/state.py`（只封装具体控制状态 SQ
 ## M01-R4：复用业务回归并清点删除
 
 - [x] **R4.1 复跑任务 / 保存契约。** 固定输入、优先级（筛选 / 查询 / 普通）、普通单名额 + 筛选独立名额、最后允许生成、取消 / 授权收紧、旧 episode 输入不得发布、快照 / 提交 / recovery_conflict、配置版本各跑原组。不得为换 Web 框架重写 Store / Runtime 状态机。
-- [ ] **R4.2 删除重复基础设施并记录。** 一次性查无 BaseHTTPRequestHandler / ThreadingHTTPServer / 模型代理剩余调用；解释必须保留的 Windows 句柄代码和产品规则。记录新探针 / 测试 / 锁 / 环境和缺口，替换部分未验前保持本稿 draft / 未完成，不继承旧 M01 implemented。
+- [x] **R4.2 删除重复基础设施并记录。** 一次性查无 BaseHTTPRequestHandler / ThreadingHTTPServer / 模型代理剩余调用；解释必须保留的 Windows 句柄代码和产品规则。记录新探针 / 测试 / 锁 / 环境和缺口，替换部分未验前保持本稿 draft / 未完成，不继承旧 M01 implemented。
 
 ## M01-R5：补齐通用能力复用
 
-- [ ] **R5.1 字段模型复用。** 配置、SourceRef / RecordRef、工具参数和各模块记录的结构用 Pydantic strict / extra=forbid 及 TypeAdapter；共用引用模型在 `sources.py`，领域结构留归属模块。工具 schema 由同一模型生成，已有上游 JSON Schema 用 jsonschema 校验；删除被替代的字段类型 / required / 枚举遍历，保留跨记录来源、权限、前后版本 / 业务判断。字段错误仍能映射原 API 路径，既有非整数 / bool / 非有限数 / 未知字段用例结果不变。
+- [x] **R5.1 字段模型复用。** 配置、SourceRef / RecordRef、工具参数和各模块记录的结构用 Pydantic strict / extra=forbid 及 TypeAdapter；共用引用模型在 `sources.py`，领域结构留归属模块。工具 schema 由同一模型生成，已有上游 JSON Schema 用 jsonschema 校验；删除被替代的字段类型 / required / 枚举遍历，保留跨记录来源、权限、前后版本 / 业务判断。字段错误仍能映射原 API 路径，既有非整数 / bool / 非有限数 / 未知字段用例结果不变。
 - [x] **R5.2 复用 pywin32 绑定。** 在 `windows.py` 用 win32job / win32file / win32api 已有封装替换覆盖到的 ctypes 声明与结构，保持原访问掩码 / share mode / flags；Job limits 用库的字典结构，句柄用 PyHANDLE 管理。对 NtCreateFile 根句柄相对打开 / rename、未覆盖的挂起恢复等列出残余窄适配和原因，不重写 ntdll SDK。复跑全部实际 Windows 组，覆盖路径替换、元数据 / ADS / 硬链接和父子孙停树；库能 import 不等于这些行为通过。
 - [x] **R5.3 复用普通文件锁。** `Store.locked` 与启动 `_lease` 改用 Portalocker 的文件锁 / RLock，Store 外层仍用 threading.RLock 保证跨线程串行，启动竞争使用非阻塞获取。核对相同锁文件身份、嵌套计数、释放和异常；保留现有跨进程用例，补旧用例没有的嵌套 / 跨线程路径。不得用普通 sidecar lock 替换文件发布的句柄身份保护。
 - [x] **R5.4 用 Loguru 写诊断。** 产品解释器内配置 `logger.add` 的 serialize、rotation / retention / compression，业务直接 `logger.bind` 附 task / session / stage / error_code；不写 Formatter、文件轮转 / 清理器或 Logger 抽象。显式 diagnose=False / backtrace=False，不记录任意异常正文、原文或 key。后台队列 sink 在退出 complete；产品 Hook / MCP 进程分别初始化独占 sink。PM 任务进程沿 Hermes 日志配置，产品诊断只传白名单字段给父进程落 Loguru，不在 PM 导入 Loguru，不把 enqueue=True 当跨解释器共享队列。MCP stdout 只协议，日志故障继续回答。Store.event 的持久事件保留原语义，SQLite 已接管的控制状态不能依靠诊断日志恢复。
@@ -164,6 +164,16 @@ State 读写入口校验组合后的任务 / 独立副本和提交清单，版�
 ### 2026-10-18 第十二批：私有配置与模块控制记录
 
 私有配置读写复用 ConfigValues / 严格版本模型，错版本、布尔额度和未知字段在采用前拒绝；旧 search 缺省只补读取值、不改原文件。M03 游标、M06 覆盖及 M07 调用 / 反馈结构同时接入归属模块模型，错绑任务在共同读取入口拒绝。完整产品 224 项、浏览器 5 项及 PM / stdio 实际机械证据见[总 Plan](../../plan.md)第十二批。R5.1 保持未完成，下一步审计 M05 重分析依赖及启动 / 采集控制结构，再做 R4.2 清理；未重复已完成结构或推进外部验收项。
+
+### 2026-10-18 第十三批：严格结构及复用清理收尾
+
+补齐 M05 重分析依赖、启动实例 / health / PM 检查事实与采集游标的严格模型；Runtime 登记 / 增量来源、episode 历史来源参数 / 纠错结果复用既有模型，删除重复字段与枚举检查。错误控制记录在采用前拒绝并保留原字节，坏实例不发 health 请求；采集仍保持 200ms 不读响应 / 不启动后台。
+
+固定 Hermes 六个同步文件 / Shell 工具直接复用实际发布的 JSON Schema，由 PM 已有 jsonschema 在原 registry handler 前校验，原 handler 签名 / kwargs 和执行链保持。实际 PM registry 六工具非法参数均未到达 handler，文件 / Shell 副作用为零；正常 AIAgent 链仍通过，PM 未安装产品框架或新依赖。环境检查补核对现有 jsonschema 可用。
+
+26 份生产 Python 的一次性清点确认手写 HTTP 服务、旧模型代理路由、自定义 Formatter 和重复 Tavily 请求均无剩余调用。保留 Windows 根句柄相对打开 / 改名、精确 FILETIME 和挂起恢复的库未覆盖窄绑定，以及固定版本、来源归属、持久额度、发布恢复和不等待通知等产品契约。R5.1 与 R4.2 依据当前结构 / 调用清点及回归勾选；模块继续为 approved，R1.6、R3.4 和真实平台验收未完成。
+
+完整产品 **229 tests / OK，96.782s**、浏览器 **5 tests / OK，24.953s**，实际 PM 七场景 43 次、Episode 链 22 次、Tavily 外扩链 14 次、纠错链 11 次、新材料修订链 12 次合成生成通过。真实 stdio、合成离线迁移、旧采集和 Push Guard 16 项通过；新增五项永久回归先复现旧错误再转绿，旧 Context fixture 补齐真实记录必填字段。全部日志、模型与副作用证据见[总 Plan 第十三批](../../plan.md#2026-10-18-第十三批严格结构及复用清理收尾)。普通终端独立冷启动、Desktop G2、真实模型语义和物理休眠条件保持，未执行远端写入。
 
 <a id="historical-execution"></a>
 

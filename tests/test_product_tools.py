@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from distillai.tools import register_read_tools
+from distillai.tools import guard_upstream_tools, register_read_tools
 
 
 class Registry:
@@ -21,6 +21,25 @@ class Registry:
 
 
 class ToolTests(unittest.TestCase):
+    def test_upstream_schema_rejects_invalid_arguments_before_tool_effects(self):
+        import inspect
+        calls = []
+        def handler(args, *, task_id=None):
+            calls.append((args, task_id))
+            return "synthetic result"
+        entry = SimpleNamespace(handler=handler)
+        registry = SimpleNamespace(get_entry=lambda name: entry)
+        schema = {"type": "object", "properties": {"count": {"type": "integer", "minimum": 1}},
+            "required": ["count"], "additionalProperties": False}
+        guard_upstream_tools(registry, [{"function": {"name": "synthetic_file_tool", "parameters": schema}}], {"synthetic_file_tool"})
+        self.assertEqual(inspect.signature(entry.handler), inspect.signature(handler))
+        for arguments in ({"count": True}, {"count": "1"}, {"count": 0}, {}, {"count": 1, "extra": "synthetic-private"}):
+            with self.subTest(arguments=arguments):
+                self.assertEqual(json.loads(entry.handler(arguments)), {"error": {"code": "invalid_tool_arguments"}})
+                self.assertEqual(calls, [])
+        self.assertEqual(entry.handler({"count": 1}, task_id="synthetic-task"), "synthetic result")
+        self.assertEqual(calls, [({"count": 1}, "synthetic-task")])
+
     def test_program_reply_rejects_extra_or_ambiguous_fields(self):
         import threading
         from distillai.hermes import HermesError, _program_tool

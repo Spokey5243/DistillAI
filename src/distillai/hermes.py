@@ -40,6 +40,7 @@ class HermesError(RuntimeError):
         self.detail = detail
 
 
+BUILTIN_TOOLS = {"read_file", "write_file", "patch", "search_files", "terminal", "process_manage"}
 DiagnosticCode = Annotated[str, Field(pattern=r"^[A-Za-z][A-Za-z0-9_]{0,63}$")]
 
 
@@ -395,7 +396,7 @@ def task_child():
             from tools.registry import registry
             if frame["kind"] == "expansion":
                 resources.enter_context(_tavily_client())
-            from .tools import register_read_tools, register_episode_tools, register_knowledge_tools, register_cognition_tools, register_context_tools, register_expansion_tools
+            from .tools import guard_upstream_tools, register_read_tools, register_episode_tools, register_knowledge_tools, register_cognition_tools, register_context_tools, register_expansion_tools
             stage = "tools"
             allowed = set()
             enabled = []
@@ -424,7 +425,7 @@ def task_child():
                     enabled.append("distillai_expansion")
                 if frame["kind"] != "query":
                     enabled.extend(["file", "terminal"])
-                    allowed.update({"read_file", "write_file", "patch", "search_files", "terminal", "process_manage"})
+                    allowed.update(BUILTIN_TOOLS)
             stage = "initialize"
             from agent.ssl_verify import resolve_httpx_verify
 
@@ -460,6 +461,7 @@ def task_child():
             stage = "tool_manifest"
             if actual - allowed:
                 raise HermesError("Unexpected tools: " + ", ".join(sorted(actual - allowed)))
+            guard_upstream_tools(registry, agent.tools or [], actual & BUILTIN_TOOLS)
             visible_inputs = {key: value for key, value in frame["inputs"].items()
                               if frame["kind"] != "query" or key not in {"records", "sources"}}
             user_input = {"task_id": frame["id"], "kind": frame["kind"], "inputs": visible_inputs,

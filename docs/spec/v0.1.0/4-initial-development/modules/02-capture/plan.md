@@ -62,6 +62,10 @@ QueueLocator / QueueRef 共用严格会话定义，通知请求复用同一结�
 
 产品采集诊断改为每进程独占 logs/capture-<time>-<pid>.jsonl.gz，Loguru 在这一条诊断结束时 complete / remove、压缩并执行 retention；旧日志保留。两个真实 Python 进程的独立文件 / 实际 PID / 无正文断言通过，产品采集 11 项及完整产品 197 项通过。Hook stdout / 失败继续策略保持，Desktop 仍待 G2。见[总 Plan](../../plan.md)第六批。
 
+## 2026-10-18 第十三批：cursor 模型与通知边界审计
+
+采集 cursor 读取用 Pydantic strict / extra=forbid 替代手写字段 / 类型集合，原 UTC、总行数与失败从头补读继续业务判断；沿旧永久组验证源字节保留、失败 / 锁竞争及有界通知。notify 仅使用所需 URL / token 并已有 loopback / 凭证 / Header 校验，共享 200ms 截止和不等响应契约保持；不导入 startup 的后台框架。一次性 bool / 负数 / 未知字段 cursor 检查通过，不新增重复测试，详见[总 Plan](../../plan.md)第十三批。G2 不因此完成。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

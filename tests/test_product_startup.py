@@ -14,12 +14,42 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from distillai.startup import live_instance, start_background, stop_background, load_launch, service_lifespan
+from distillai.startup import live_instance, start_background, stop_background, load_launch, service_lifespan, instance_url
 from distillai.storage import atomic_json, Store
 from distillai.windows import ProcessJob, resume_process
 
 
 class StartupTests(unittest.TestCase):
+    def test_invalid_instance_metadata_is_rejected_before_a_health_request(self):
+        saved = {"instance_id": "a" * 32, "pid": 1234, "protocol": 1,
+            "url": "http://127.0.0.1:1234", "token": "synthetic-only", "launch_id": None}
+        self.home.mkdir()
+        path = self.home / "instance.json"
+        self.addCleanup(path.unlink, missing_ok=True)
+        for changed in ({"protocol": True}, {"ready": "false"}, {"extra": "ignored"}):
+            atomic_json(path, {**saved, **changed})
+            before = path.read_bytes()
+            with self.subTest(changed=changed), patch("distillai.startup.instance_request", return_value={
+                    "instance_id": saved["instance_id"], "pid": saved["pid"], "protocol": 1, "ready": True}) as request:
+                self.assertIsNone(live_instance(self.home))
+                request.assert_not_called()
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_untyped_health_readiness_or_protocol_is_not_adopted(self):
+        saved = {"instance_id": "a" * 32, "pid": 1234, "protocol": 1,
+            "url": "http://127.0.0.1:1234", "token": "synthetic-only"}
+        self.home.mkdir()
+        atomic_json(self.home / "instance.json", saved)
+        self.addCleanup((self.home / "instance.json").unlink, missing_ok=True)
+        for changed in ({"ready": "false"}, {"protocol": True}):
+            with self.subTest(changed=changed), patch("distillai.startup.instance_request", return_value={
+                    "instance_id": saved["instance_id"], "pid": saved["pid"], "protocol": 1, "ready": True, **changed}):
+                self.assertIsNone(live_instance(self.home))
+
+    def test_instance_url_rejects_password_only_authority(self):
+        with self.assertRaises(ValueError):
+            instance_url({"url": "http://:synthetic-private@127.0.0.1:1234"})
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

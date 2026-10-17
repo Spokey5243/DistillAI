@@ -43,7 +43,7 @@ uv lock --check --offline
 
 用户已将 OS 写隔离延至后续独立 Issue；当前普通任务拥有普通用户文件权限，保留副本、业务授权、预算、停树和冲突保护。程序不能保证拒绝或恢复自由命令的目录外直接写入。范围和实际证据见 [M01 执行记录](docs/spec/v0.1.0/4-initial-development/modules/01-runtime/plan.md#2026-10-15g1-冻结及存储实施)；后续 Issue 尚未创建。
 
-产品 Python 要求 3.13+。控制 / Web / MCP 使用项目 `.venv`，由 uv 按锁安装；Hermes 任务使用官方 PM 准备的固定解释器，不往 PM 环境安装产品框架。检查分别核对产品依赖与 Hermes SHA / PM 归属 / AIAgent 导入，不要求两个环境的全部依赖版本相同。`scripts/start.ps1` 使用产品解释器，`-HermesPython` 仅指定任务解释器。
+产品 Python 要求 3.13+。控制 / Web / MCP 使用项目 `.venv`，由 uv 按锁安装；Hermes 任务使用官方 PM 准备的固定解释器，不往 PM 环境安装产品框架。检查分别核对产品依赖与 Hermes SHA / PM 归属 / AIAgent 导入、PM 已有的 jsonschema，不要求两个环境的全部依赖版本相同。任务沿上游已发布 Schema 校验文件 / Shell 工具参数，非法参数在执行前返回固定错误。`scripts/start.ps1` 使用产品解释器，`-HermesPython` 仅指定任务解释器。
 
 ```powershell
 uv sync --locked --group dev --group browser

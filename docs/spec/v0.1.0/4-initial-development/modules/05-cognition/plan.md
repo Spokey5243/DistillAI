@@ -57,6 +57,10 @@ uv run --locked python -m unittest discover -s tests -p 'test_product_correction
 
 重分析请求与独立认知纠错、反馈入口复用所属模型。实际 PM 的明确归属纠错 / 空 M04 / 空 M05 / Web 独立纠错分别 5 / 1 / 1 / 4 次通过；版本等待解除、独立提交来源、知识正文保持均核对。完整产品 193 项通过，真实模型语义仍未验。见[总 Plan](../../plan.md)第五批。
 
+## 2026-10-18 第十三批：重分析依赖持久结构
+
+重分析清单用严格模型复用 RecordRef / SourceRef / VersionedRef，waiting 与带 resolved_by 的 ready 分开定义，读写边界共用；坏引用、未知状态 / 字段和缺少解除任务不再被采用。直接依赖、同提交等待、当前 M05 才解除及旧选材须重新准备规则不变。新增回归先失败后修复，实际 PM 归属纠错 / 独立认知纠错 11 次、新材料直接修订 12 次合成生成通过，见[总 Plan](../../plan.md)第十三批。真实模型语义与 Desktop 自然反馈仍未验收。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

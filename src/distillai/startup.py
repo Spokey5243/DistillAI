@@ -13,6 +13,8 @@ import time
 import uuid
 import importlib
 from urllib.parse import urlsplit
+from typing import Annotated, NotRequired, TypedDict
+from pydantic import ConfigDict, Field, TypeAdapter, with_config
 import httpx
 import anyio
 import portalocker
@@ -25,9 +27,44 @@ from .server import BackendServer
 from .storage import atomic_json
 from .diagnostics import diagnostic_sink
 from .windows import resume_process
+from .sources import Identifier, NonblankText
 
 
 HERMES_SHA = "a7b2ba02e3b9bb95d0cac87a6312cc82a3bc3eed"
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class InstanceIdentity(TypedDict):
+    instance_id: Identifier
+    pid: Annotated[int, Field(gt=0)]
+    protocol: Annotated[int, Field(ge=1, le=1)]
+
+
+class InstanceRecord(InstanceIdentity):
+    url: str
+    token: Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]+$")]
+    launch_id: NotRequired[str | None]
+    ready: NotRequired[bool]
+
+
+class InstanceHealth(InstanceIdentity):
+    ready: bool
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class RuntimeDetails(TypedDict):
+    python: NonblankText
+    base_python: NonblankText
+    prefix: NonblankText
+    python_version: NonblankText
+    base_prefix: NonblankText
+    openai_version: NonblankText
+    httpx_version: NonblankText
+
+
+INSTANCE_RECORD = TypeAdapter(InstanceRecord)
+INSTANCE_HEALTH = TypeAdapter(InstanceHealth)
+RUNTIME_DETAILS = TypeAdapter(RuntimeDetails)
 
 
 def load_launch(home, **overrides):
@@ -56,7 +93,7 @@ def check_environment(source, python):
                            check=True, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW).stdout.strip()
     if revision != HERMES_SHA or dirty:
         raise ValueError("Hermes source does not match the clean, verified G1 revision")
-    for name in ("fastapi", "uvicorn", "httpx", "fastmcp", "pydantic", "loguru", "networkx"):
+    for name in ("fastapi", "uvicorn", "httpx", "fastmcp", "pydantic", "loguru", "networkx", "jsonschema"):
         importlib.import_module(name)
     code = (
         "import sys,json,importlib.metadata as m;"
@@ -64,11 +101,12 @@ def check_environment(source, python):
         "import hermes_cli.env_loader as loader;loader.load_hermes_dotenv=lambda **kwargs:[];"
         "from run_agent import AIAgent;"
         "assert sys.version_info >= (3,13);"
+        "m.version('jsonschema');"
         "print(json.dumps({'python':sys.executable,'base_python':sys._base_executable,'prefix':sys.prefix,'python_version':sys.version.split()[0],"
         "'base_prefix':sys.base_prefix,'openai_version':m.version('openai'),'httpx_version':m.version('httpx')}))")
     checked = subprocess.run([str(python), "-I", "-B", "-c", code], check=True,
                              capture_output=True, text=True, timeout=30, creationflags=subprocess.CREATE_NO_WINDOW)
-    details = json.loads(checked.stdout)
+    details = RUNTIME_DETAILS.validate_json(checked.stdout)
     for parent in python.parents:
         facts = parent / "facts.json"
         if facts.is_file():
@@ -93,7 +131,7 @@ def data_home(home=None):
 
 def instance_url(instance):
     url = urlsplit(instance["url"])
-    if url.scheme != "http" or url.hostname != "127.0.0.1" or not url.port or url.path or url.query or url.fragment or url.username:
+    if url.scheme != "http" or url.hostname != "127.0.0.1" or not url.port or url.path or url.query or url.fragment or url.username or url.password:
         raise ValueError("Invalid local instance address")
     return instance["url"]
 
@@ -116,10 +154,8 @@ def instance_request(instance, path, *, method="GET", body=None, timeout=3):
 
 def live_instance(home):
     try:
-        instance = json.loads((data_home(home) / "instance.json").read_text(encoding="utf-8"))
-        if instance["protocol"] != 1 or type(instance["pid"]) is not int or instance["pid"] <= 0:
-            return None
-        health = instance_request(instance, "/v1/health", timeout=.3)
+        instance = INSTANCE_RECORD.validate_json((data_home(home) / "instance.json").read_bytes())
+        health = INSTANCE_HEALTH.validate_python(instance_request(instance, "/v1/health", timeout=.3))
         if any(health[name] != instance[name] for name in ("instance_id", "pid", "protocol")):
             return None
         return {**instance, "ready": health["ready"]}
@@ -309,6 +345,7 @@ async def service_lifespan(runtime, control, *, material_register=None):
     runtime.on_wake = lambda: loop.call_soon_threadsafe(wake)
     instance = {"instance_id": control.instance_id, "pid": os.getpid(), "protocol": 1,
                 "url": control.url, "token": control.token, "launch_id": os.environ.get("DISTILLAI_START_NONCE")}
+    INSTANCE_RECORD.validate_python(instance)
     async def publish_instance():
         # Uvicorn starts listening after the ASGI lifespan has yielded.
         while not control.server.started:
@@ -382,7 +419,11 @@ def run_service(runtime, *, material_register=None):
             with runtime.store.locked():
                 path = home / "instance.json"
                 if path.is_file():
-                    current = json.loads(path.read_text(encoding="utf-8"))
-                    if current["instance_id"] == server.instance_id:
-                        path.unlink()
+                    try:
+                        current = INSTANCE_RECORD.validate_json(path.read_bytes())
+                        if current["instance_id"] == server.instance_id:
+                            path.unlink()
+                    except (OSError, ValueError) as error:
+                        logger.bind(component="backend", stage="instance_cleanup",
+                            error_code=type(error).__name__).warning("instance_cleanup_pending")
             logger.bind(component="backend", stage="stop").info("backend_stopped")

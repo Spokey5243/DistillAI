@@ -1018,3 +1018,11 @@ SQLite 组合出的完整任务、独立文件副本记录和提交清单在共�
 私有配置在读写边界复用 ConfigValues 的严格字段，读取时核对版本与所选文件；旧文件缺少 search 时仍只在返回值补空搜索配置，不改原字节。episode 游标读取接入原 SessionState 模型并核对 session；外扩覆盖状态用严格 Identifier / Version、有限时间值和可空任务引用，坏字段不再被定时检查覆盖。
 
 M07 调用记录区分直接结果、后台任务和提前取消，反馈记录区分待关联与已登记；原查询 / 反馈参数、来源引用和请求边界由同一模型复用。状态、取消和幂等重入先核对任务种类、调用 / 反馈 ID 和原请求内容，再采用关联任务；反馈文件名继续对应 client_request_id 的 hash。损坏记录不取消其他调用、报告其他请求任务或推进反馈关联；原提前取消、唯一实际用户来源、同源观察和歧义等待语义不变。没有新有效载荷字段、迁移或公开 API 变化，material_revision 仍为 3；R5.1 继续审计 M05 重分析依赖及启动 / 采集控制结构。
+
+### 2026-10-18：字段模型与复用清理收尾（Agent 闭环）
+
+M05 重分析依赖记录复用 RecordRef / SourceRef，严格区分 waiting 与具有 resolved_by 的 ready，未知状态 / 字段、坏引用不被采用或保存。后台实例、健康响应与本程序打印的解释器事实使用严格模型；protocol 必须是整数 1、ready 必须为 bool，实例元数据非法时不发健康请求。清理时损坏实例文件保留并记录无正文诊断；控制 URL 同时拒绝只有密码的 authority，沿既有 loopback / 无凭证边界。采集 cursor 用严格模型替代字段类型 / required 遍历，UTC / 总长度和坏 cursor 从头补读规则保持；通知仍只读取实际所需的 loopback / token，沿共享 200ms 截止，不导入后台框架。
+
+Runtime 登记 / 增量、历史来源参数和归属纠错复用已有模型，删除重复类型 / 枚举 / 字段集合检查；来源顺序、scope 授权、固定版本和字段归属仍是业务判断。对固定 Hermes 已发布的六个同步文件 / Shell 工具，复用 jsonschema 的 validator_for / check_schema / is_valid，在任务子进程现有 registry handler 前校验实际 Schema；wraps 保持上游 kwargs 检查，非法参数返回固定错误，不执行 handler 或输出参数。DistillAI 自有工具继续其 Pydantic 模型 / 错误契约；不新增插件、传输或工具循环。启动检查确认 PM 已有 jsonschema，不安装或改变 PM 环境。
+
+复用清理保留 Windows 根句柄相对操作 / 100ns 时间 / 挂起恢复的已核对窄绑定，以及发布恢复、持久预算、物理来源、200ms 无等待通知等产品规则；这些不是新通用框架。有效载荷与持久格式不变，material_revision 仍为 3。完成证据及 R5.1 / R4.2 状态见总 Plan 第十三批；启动正向独立性、Desktop、实际模型与远端验收仍单列未完成。
