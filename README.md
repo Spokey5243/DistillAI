@@ -75,7 +75,7 @@ $DataHome = Join-Path $env:TEMP 'distillai-local-check'
 .\scripts\start.ps1 -Action Stop -DataHome $DataHome
 ```
 
-`Serve` 隐藏启动并复用同一实例，`Check` 只报告环境和已校验的实例身份，`Stop` 等待停树与后台退出；均不在输出中打印后台授权。脚本同时提供 `Mcp` 和 `Web`，用法见下文。未设置数据根时默认 `~/.distillAI`；当前业务处理器继续按模块 Plan 实施，不启用个人会话或把合成模型结果当业务验收。
+`Serve` 隐藏启动并复用同一实例，`Check` 只报告环境和已校验的实例身份，`Stop` 等待停树与后台退出；均不在输出中打印后台授权。新后台先保持挂起，确认已脱离 Windows Job 后才运行；若仍受 MCP / 测试执行器的 Job 管理，启动明确失败，需要在其进程树之外的普通 Windows 终端执行 `Serve`。脚本同时提供 `Mcp` 和 `Web`，用法见下文。未设置数据根时默认 `~/.distillAI`；当前业务处理器继续按模块 Plan 实施，不启用个人会话或把合成模型结果当业务验收。
 
 ## 产品采集（M02，Desktop 待验收）
 
@@ -101,7 +101,7 @@ M03 → M04 → M05 的真实 AIAgent 配本机合成 provider 已验证观察 /
 
 M05 校验实际用户来源、帮助、观察 / 假设引用和定性理解，保护知识正文 / 关系核查。M07 已接通固定版本上下文准备、两列表、只读语义查询、无工具筛选和 compact 选择快照。查询返回实际读到的记录版本，取消只停止该次调用；同文的两个独立调用各有关联。反馈尚未取得可信原始位置时保留待关联，不凭文本相同制造用户表现。
 
-`scripts/start.ps1 -Action Mcp` 使用产品项目解释器启动 FastMCP stdio 服务，公开 query_context / submit_feedback；先通过 `-Action Serve` 启动后台。实际 FastMCP PythonStdioTransport 已验证工具调用、严格输入、反馈幂等及独立后台在 stdio 退出后存活；MCP 自动冷启动在受限 Windows Job 中未通过，后台无法独立启动时明确返回 backend_not_started。退出 stdio 保留此前独立启动的后台，显式 `-Action Stop` 才请求停止。实际 Desktop 插件 MCP 注册 / 工具全名、Hook 注入、生命周期和反馈边界仍待 G2，当前不自动启用个人会话。
+`scripts/start.ps1 -Action Mcp` 使用产品项目解释器启动 FastMCP stdio 服务，公开 query_context / submit_feedback，优先复用同一数据根的后台。后台不存在时会尝试独立启动；受限或嵌套 Windows Job 下返回 `backend_not_started`，应先从普通 Windows 终端执行 `-Action Serve`，再连接 MCP。不能只凭创建进程成功认定独立常驻：实际原生脚本 / FastMCP stdio 已复现并修复外层 Job 随 MCP 退出杀死后台的问题，复用既有服务、反馈幂等、退出后服务存活和显式 Stop 已验证。普通终端的正向冷启动及实际 Desktop 插件 MCP 注册 / 工具全名、Hook 注入、生命周期和反馈边界仍待验收，当前不自动启用个人会话。
 
 实际 SDK / AIAgent 的准备、查询、筛选和取消探针合计 9 次本机合成模型请求，两次 compact 不增加生成。明确 episode 纠错与直接依赖等待状态同清单提交，M03 不编辑认知字段。查询旧判断另附当前等待状态；当前修订对应的 M05 成功后解除直接等待并触发开放会话准备，不增加材料计数。旧候选须经 M07 重新准备才能新选材，compact 保留既定选择。模型语义质量和真实 Desktop 仍待验收。
 

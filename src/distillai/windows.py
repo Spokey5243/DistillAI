@@ -229,6 +229,17 @@ _resume_process.restype = ctypes.c_long
 _resume_process.argtypes = [w.HANDLE]
 
 
+def resume_process(pid, *, require_detached=False):
+    process = _win32(win32api.OpenProcess, 0x1800 if require_detached else 0x800, False, pid)
+    try:
+        if require_detached and _win32(win32job.IsProcessInJob, process, None):
+            return False
+        _check_nt(_resume_process(int(process)))
+        return True
+    finally:
+        _win32(process.Close)
+
+
 class ProcessJob:
     """Assign a suspended child before it can spawn; stop the inherited tree."""
     def __init__(self):
@@ -259,11 +270,7 @@ class ProcessJob:
 
     def resume(self, pid):
         with self._lock:
-            process = _win32(win32api.OpenProcess, 0x800, False, pid)
-            try:
-                _check_nt(_resume_process(int(process)))
-            finally:
-                _win32(process.Close)
+            resume_process(pid)
 
     def stop(self, timeout=5):
         with self._lock:

@@ -143,6 +143,12 @@ FastAPI 各写路由绑定 Pydantic 请求模型，先执行原认证 / 实际 b
 
 任务消息 / 生成 attempt / 请求 / 搜索包装 / 完成报告改用严格 TypeAdapter，复用 ChildDiagnostic 和 M07 读取审计参数；domain 校验与 AF_PIPE 分帧 / 鉴权 / Job 关闭继续原实现。空 attempt_id 不再自动分配并扣额，坏生命周期记录不推进或关闭。新增两项永久回归、原查询回归改走实际程序审计入口，详见[总 Plan](../../plan.md)第八批。R5.1 仍未全部完成，继续清点交付和持久控制记录；不以本批结构替换代表完整验收。
 
+## 2026-10-18 第九批：原生入口与嵌套 Job
+
+真实脚本 / FastMCP stdio 复现“BREAKAWAY 创建成功但仍属于外层 SDK Job，退出即杀后台”；新增 launcher 嵌套 Job 永久回归先失败。后台改为先挂起，确认 IsProcessInJob 为 false 后才恢复；拒绝时终止并等待子进程，后台入口不运行。普通任务 Job.resume 复用原 NtResumeProcess 代码，不改变其入 Job 后恢复 / 停树契约。
+
+完整产品 208 项、启动 / 调度 9 项、Windows 9 项通过；原生 Check / Mcp 拒绝冷启动、既有服务 Serve / Web 复用及 Stop 已取得明确范围证据。测试服务归执行器回收，不伪装脱离全部 Job；真实拒绝回归在未替换的独立子进程运行。R3.4 仍缺普通终端的正向独立冷启动，不勾选；R5.1 后续结构工作继续。详见[总 Plan](../../plan.md)第九批与[待办](../../pending.md)。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

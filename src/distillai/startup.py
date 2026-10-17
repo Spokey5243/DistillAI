@@ -24,6 +24,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from .server import BackendServer
 from .storage import atomic_json
 from .diagnostics import diagnostic_sink
+from .windows import resume_process
 
 
 HERMES_SHA = "a7b2ba02e3b9bb95d0cac87a6312cc82a3bc3eed"
@@ -153,8 +154,17 @@ def start_background(home, command, timeout=10, *, python_launcher=None):
     try:
         child = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                  stderr=subprocess.DEVNULL,
-                                 creationflags=subprocess.CREATE_NO_WINDOW | subprocess.CREATE_BREAKAWAY_FROM_JOB,
+                                 creationflags=subprocess.CREATE_NO_WINDOW | subprocess.CREATE_BREAKAWAY_FROM_JOB | 0x4,
                                  env=environment)
+        try:
+            # Nested launcher jobs can accept BREAKAWAY while retaining an outer client's job.
+            if not resume_process(child.pid, require_detached=True):
+                raise RuntimeError(message)
+        except BaseException:
+            if child.poll() is None:
+                child.kill()
+            child.wait(timeout=5)
+            raise
     except OSError as error:
         if error.winerror == 5:
             raise RuntimeError(message) from None

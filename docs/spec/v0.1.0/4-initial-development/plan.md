@@ -335,6 +335,20 @@ PM 实际 import distillai.hermes 后 Loguru / FastAPI / Uvicorn / FastMCP / Net
 
 统一 Design、M01 / M03 / M07 执行记录及待办已同步，material_revision 仍为 3。R5.1 保持未勾选：任务引导 / 回复、交付及其余持久控制记录继续清点；启动接入 / 清理审计仍有可独立实施项。Goal 用量状态未变，不重建或标 complete；外部 Desktop / 模型语义 / 物理休眠条件沿待办，不阻止后续本地工作。
 
+## 2026-10-18 第九批：原生入口与后台独立性
+
+本批在 ed76de8b07ed57f2b95ed6d6cf3a466efdcb4b84 上续接 M01-R3.4 / M07-R1.2。用 FastMCP 的通用 StdioTransport 直接执行 powershell.exe / scripts/start.ps1 -Action Mcp，真实 PM 检查与产品入口均实际运行，数据根含空格且只使用合成内容。发现此前“冷启动 ready”不等于独立常驻：venv launcher 的嵌套 Job 让 CREATE_BREAKAWAY_FROM_JOB 成功，但后台仍属于 SDK 的外层 Job；stdio 退出后进程 exit 0、health 失效而 instance.json 残留。一次性直接核对 SDK 所持 Job 的实际成员关系，仅作诊断，不在产品依赖其私有属性。原始证据 ninth-start-membership.log。
+
+新增真实 launcher + 外层 ProcessJob 永久回归，旧实现返回 started 导致失败。修复后后台先以 CREATE_SUSPENDED 创建，用公开 IsProcessInJob 检查不属于任何 Job 才恢复；仍受 Job 管理则终止 / 等待，产品入口不会执行，不创建控制库或宣称 ready。恢复动作复用 windows.py 原有 NtResumeProcess 窄适配，ProcessJob.resume 继续原锁与普通任务语义，没有新建执行器或绕开父进程管理。保守拒绝意味着当前测试执行器自身 Job 也可能阻止自启，正向常驻不能在该上下文中假定通过。
+
+原启动并发 / 实例 / 轮询 fixture 验证业务服务而非独立常驻：现在明确由测试负责回收服务，并仅在这些 fixture 替换“脱离全部 Job”的环境前提，仍执行真实 Popen、挂起 / 恢复、Uvicorn、锁、API 与停止。直接受限 Job 和新增嵌套 launcher 两个拒绝用例在未替换的独立子进程运行，不能将 fixture 通过当作实际脱离证明。原 Windows 9 项通过；启动 / 调度 **9 tests / OK，17.665s**，最终完整产品 **208 tests / OK，97.867s**（ninth-startup-tests.log、ninth-product.log）。既有采集行为脚本通过，Push Guard **16 tests / OK，31.312s**。
+
+最终原生探针（ninth-start-entries-final.log / ninth-start-entries-results.json）确认：Check 不创建数据库；受限 Serve 返回 exit 1、无运行实例；MCP 冷启动明确 backend_not_started。随后由测试在 MCP Job 外启动真实前台 serve fixture，Serve / Check 返回同一 instance_id / pid，公开结果无 token；原生 MCP 精确查询无匹配、反馈幂等通过，stdio 退出后 fixture 仍活着且不属于 SDK Job。Stop 等待服务退出，再次 Stop 返回 false。第二个真实前台实例供 Web 复用；webbrowser.open 经本次进程的 BROWSER 捕获 helper 交接，实际 Chromium 完成一次性引导、303 清 URL 和页面读取。这不是系统默认浏览器或 Web 正向冷启动证明。
+
+实际产品解释器为项目 .venv，底层进程镜像 D:\miniconda3\python.exe；Hermes 检查使用 PM Python 3.14.7。全程零模型请求，无个人数据，全部自建服务 / stdio / 浏览器退出。原 Windows CI 的锁安装、Ruff、采集 / Guard / 产品 / 浏览器命令与权限配置已核对，未写远端或声称当前 SHA 的 GitHub CI 通过。
+
+收尾 Ruff、uv lock --check --offline、32 份文档 / 453 条本地链接及 git diff --check 通过，自建探针 / 服务进程均已退出。统一 Design、M01 / M07、README 和待办同步；保留 R3.4 / R1.2 未勾选，正向独立常驻与 Desktop 需在普通 Windows 终端 / 真实平台验证。当前无需新增技术选型，仍不引入系统服务、计划任务或父进程伪装。R5.1 的引导 / 回复 / 交付 / 控制记录仍是可独立实施工作；Goal 状态未变，不标整体完成。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

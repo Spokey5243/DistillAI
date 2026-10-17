@@ -74,6 +74,12 @@ stdio 进程配置独占 Loguru sink，取消未确认诊断直接 bind invocati
 
 管道 audit_reads 参数的严格结构留在本模块，复用 RecordRef / SourceRef；固定快照实际成员与任务状态仍由原 audit_reads 判断。原查询回归通过真实程序操作入口验证错误审计不写状态，合法审计后实际冻结版本仍可返回。MCP 公开工具签名和业务返回未变，交付 / compact 持久结构仍需 R5.1 后续清点；Desktop 项不因此勾选，详见[总 Plan](../../plan.md)第八批。
 
+## 2026-10-18 第九批：原生脚本 stdio 与冷启动拒绝
+
+通过 FastMCP StdioTransport 实际调用 powershell.exe / scripts/start.ps1 -Action Mcp；冷启动原先能报 ready，但后台仍在 SDK Job，stdio 退出后死亡。M01 现于挂起阶段确认脱离全部 Job，受限环境返回 backend_not_started，不再将短暂可用当独立常驻。测试预启动的真实前台服务不在 SDK Job，精确无匹配 / 反馈幂等 / Serve 复用 / stdio 退出后存活、Web 与显式 Stop 通过，零模型生成。
+
+上述服务由测试进程管理，不充当正向独立冷启动；R1.2 / R1.4 的 Desktop 条件继续未勾选。需在普通 Windows 终端与真实 Desktop 中完成正向验证，具体证据 / 问题见[总 Plan](../../plan.md)第九批及[待办](../../pending.md)。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

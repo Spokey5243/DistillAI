@@ -994,3 +994,9 @@ Web 固定静态路由为 `/`、`/app.js`、`/styles.css`，浏览器经单次 `
 沿修订 3 的严格模型复用，任务消息、生成 attempt / 请求、搜索操作包装与完成报告在 Hermes 适配内用 Pydantic 校验；读取审计参数留在 M07，复用来源 / 记录引用，实际读取固定版本仍由原领域判断确认。完成报告复用 ChildDiagnostic，错误正文不落诊断；成功必须包含 result，业务结果结构仍交所属模块。固定管道 attempt_id 不接受 null 或自动分配，非法请求在快照 / 扣额前拒绝；直接 Runtime 的程序调用仍保留原可选 attempt_id 契约。
 
 M03 生命周期持久记录校验事件种类、session、严格整数计数、可空截止 / 诊断及前版引用；读取时复核 session 归属及已有 UTC 时间规则，坏记录不继续推进或触发关闭，保留原字节供处理。事件先后、30 分钟截止、迟到材料和来源完整性规则不变。这里只落实已批准结构约束，不扩展 Desktop 信号推断，不新增持久字段或格式迁移，material_revision 仍为 3；R5.1 继续保留未完成，交付及其余持久控制记录仍待清点，Plan 同步本批证据。
+
+### 2026-10-18：后台独立性核验（Agent 闭环）
+
+真实 PowerShell → venv launcher → FastMCP stdio 发现嵌套 Job 例外：CREATE_BREAKAWAY_FROM_JOB 返回成功，后台仍属于 SDK 的外层 Job，stdio 结束会杀死它并留下实例文件。落实原有“不能把非独立进程当常驻”的要求：后台先 CREATE_SUSPENDED，经公开 IsProcessInJob 确认不属于任何 Job 后，复用既有 NtResumeProcess 窄适配恢复；无法证明独立或恢复失败时，在运行产品入口前终止并回收该子进程，返回既定无法独立启动错误。普通任务仍先入自己的 Job 再恢复，不要求脱离 Job，可靠停树规则不变。
+
+此处采取保守证明：受控执行器中同样可能拒绝自动后台启动；可在其进程树之外的普通 Windows 终端先 Serve，再由 MCP / Web 复用身份。原生脚本及受限 Job 的失败分支已测，测试预启动的前台服务能证明复用 / 协议退出 / Web / Stop，不能证明独立常驻或 Desktop 冷启动。保持 M01-R3.4 / M07-R1.2 未完成，将普通终端正向验收写入待办；未引入服务、计划任务或更换父进程的路线。属于已批准生命周期约束的异常闭环，material_revision 仍为 3，Plan / README 同步。

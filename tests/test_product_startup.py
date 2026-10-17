@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 from distillai.startup import live_instance, start_background, stop_background, load_launch, service_lifespan
 from distillai.storage import atomic_json, Store
-from distillai.windows import ProcessJob
+from distillai.windows import ProcessJob, resume_process
 
 
 class StartupTests(unittest.TestCase):
@@ -31,6 +31,8 @@ class StartupTests(unittest.TestCase):
                 "from distillai.runtime import Runtime;from distillai.startup import run_service;"
                 f"s=Store({str(self.home)!r});run_service(Runtime(s,Config(s),lambda task,control: {{}},lambda task,result: None))")
         self.command = [sys.executable, "-I", "-c", code]
+        # Fixtures are runner-owned; real detachment refusals run in separate, unpatched processes below.
+        self.enterContext(patch("distillai.startup.resume_process", side_effect=lambda pid, **options: resume_process(pid)))
 
     def test_launch_uses_cli_then_declared_environment_then_saved_values(self):
         (self.home / "config").mkdir(parents=True)
@@ -81,6 +83,24 @@ class StartupTests(unittest.TestCase):
             self.assertEqual(child.returncode, 0, stderr)
             self.assertIn("independent backend", json.loads(stdout).get("error", ""))
         self.assertIsNone(live_instance(self.home))
+
+    def test_launcher_nested_job_cannot_leave_a_backend_owned_by_the_client(self):
+        source = str(Path(__file__).resolve().parents[1] / "src")
+        code = (f"import sys,json;sys.path.insert(0,{source!r});from distillai.startup import start_background;"
+                "sys.stdin.readline();\n"
+                f"try:start_background({str(self.home)!r},{self.command!r})\n"
+                "except RuntimeError as error:print(json.dumps({'error':str(error)}))\n"
+                "else:print(json.dumps({'started':True}))")
+        with ProcessJob() as job:
+            child = subprocess.Popen([sys.executable, "-I", "-c", code], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE, creationflags=subprocess.CREATE_NO_WINDOW | 0x4)
+            job.assign(child.pid)
+            job.resume(child.pid)
+            stdout, stderr = child.communicate(b"start\n", timeout=15)
+            self.assertEqual(child.returncode, 0, stderr)
+            self.assertIn("independent backend", json.loads(stdout).get("error", ""))
+        self.assertIsNone(live_instance(self.home))
+        self.assertFalse((self.home / "state.sqlite3").exists(), "A refused resident start must not run the backend")
 
     def test_polling_discovers_complete_material_without_a_notification(self):
         start_background(self.home, self.command)
