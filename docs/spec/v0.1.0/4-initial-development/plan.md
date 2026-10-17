@@ -187,7 +187,7 @@ git diff --check
 
 - [ ] **A1.1 离线与依赖检查。** 先准备锁定依赖与 Chromium，再跑上面检查；CI 在原 Windows job 按锁安装 dev / browser 组、准备 Chromium、运行 Ruff / 既有组 / 浏览器组，不下载 Hermes / 个人数据或用个人密钥。同步 Python / Actions 规则的旧零依赖表述，Ruff 只启用本稿明确的错误规则。核对实际 PR tested SHA 后才能声称 GitHub CI 通过；此项不包含远端写授权。
 - [ ] **A1.2 Desktop 闭环。** 合成会话贯通采集 → episode 关闭 / 修订 → M04（含空结果）→ M05 → M07 → 查询 / 新用户表现再分析。检查实际来源和每次固定版本，不用编写好的 localhost 模型响应代替语义评价。
-- [ ] **A1.3 恢复与外扩。** 丢通知、进程终止、旧输入、并发编辑、查询取消、发布中断各复用现有用例；再做一条真实搜索 / 读取 → M04 → M07 链。失败不发布、不推进、不丢用户修改，外部内容不当用户掌握。
+- [x] **A1.3 恢复与外扩。** 丢通知、进程终止、旧输入、并发编辑、查询取消、发布中断各复用现有用例；再做一条真实搜索 / 读取 → M04 → M07 链。失败不发布、不推进、不丢用户修改，外部内容不当用户掌握。
 - [ ] **A1.4 日常体验。** 四入口浏览 / 编辑、409 和错误留输入、旧异步响应不盖新内容、键盘 / 窄屏、两次 compact 原选材恢复。检查原任务仍可继续、无候选为空、自然反馈无诱导。
 - [ ] **A1.5 更新实际状态。** README 写实际解释器 / 启动 / 锁 / 环境边界；规则文件删除已过时的零依赖假设；模块记录写新命令、结果、版本和证据。按功能完整、来源可靠、认知更新有效、日常体验四项逐项审阅后才标 implemented。未过项目明确保留，不能用比例代替验收。
 
@@ -396,6 +396,22 @@ M07 查询记录区分直接结果 / 后台任务 / 提前取消，反馈区分 
 全范围 Ruff、离线锁检查、32 份文档 / 465 个本地链接及 git diff 检查通过。
 
 26 份生产 Python 的复用清点确认 BaseHTTPRequestHandler / ThreadingHTTPServer、旧模型路由、自定义 Formatter 和重复 Tavily 请求实现均无剩余调用（thirteenth-reuse-audit.json）。保留库未覆盖的 Windows 根句柄相对操作 / 精确 FILETIME / 恢复挂起窄绑定，以及持久额度、固定版本 / 来源归属、原子发布恢复和有界不等待采集通知等产品契约。M01-R5.1 与 R4.2 据此勾选；Design、README、M01 / M02 / M03 / M05 及待办同步，material_revision 仍为 3，无有效持久格式变化或真实数据迁移。下一轮审计 R1.6 的客户端重建 / 断流 / 连接拒绝 / 重启续额等实际 SDK 边界证据，并推进其余依赖满足的本地接入；R3.4、G2、物理休眠和真实模型语义仍未完成，无远端写入，Goal 不标整体完成。
+
+## 2026-10-18 第十四批：实际 SDK 边界与本地验收
+
+在 e5565bd9add531a16cadacfccb1ca73099e89d0b 的干净任务分支续接 M01-R1.6。固定 Hermes 源码仍为干净 a7b2ba02e3b9bb95d0cac87a6312cc82a3bc3eed，使用原产品 HermesExecutor / TaskPipe / Job / SQLite 和已准备 PM Python 3.14.7，不更改生产代码、上游或 PM 包。一次性探针只用 sys.setprofile / threading.setprofile 观察产品客户端构造返回值；不替换 SDK 请求、重试、客户端构造方法或模型处理。
+
+四类实际 AIAgent 场景共 **23** 个 localhost 合成 provider 到达请求，逐项与持久账本一致：SSE 响应建立后截断，随后恢复，共 **2** 次均计数；前三次请求在响应头前断开，触发真实 primary_recovery 重建，第四次成功，共 **4** 次均计数；端口已绑定但尚未 listen，首次连接被拒绝，对应 attempt 保留 not_sent 且 model_calls=0，随后启动监听，**1** 次成功 / 计数。观察到 **18** 个共享 / 请求专用 / 重建 SDK 客户端，全部仍有产品发送门禁且 max_retries=0。证据 fourteenth-sdk-boundaries.log / .json。
+
+重启续额使用同一任务：第一次实际生成后返回非法 JSON，任务失败但保留已用 **1** 次；关闭并重新打开 Store / Config / Runtime，显式重试启动新的实际 PM AIAgent，仅能再发 **15** 次，第 17 次尝试在发送前拒绝，总到达 / 持久额度为 **16**。再次关闭 / 重开并重试，仍为 **16**，新增到达 **0**，两次重试均按 BudgetError 失败，没有清预算或重写原任务输入。结合上一批正常工具、评分、只读查询、无工具筛选、503 和第 16 次完成证据，R1.6 的本地机械场景已补齐；当前直连实现的一次获准真实模型流式工具往返仍缺可用私有配置，R1.6 保持未勾选，不继承旧代理的真实调用结果。
+
+复用原组完成本地验收：SDK 传输 **5 tests / OK，0.349s**（fourteenth-transport.log）、Runtime **15 tests / OK，1.700s**（fourteenth-runtime.log）、采集 **11 tests / OK，2.027s**、来源 **7 tests / OK，0.446s**（fourteenth-capture.log、fourteenth-sources.log）；存储 / SQLite / episode / 纠错 / context / MCP / feedback / Web / HTTP **102 tests / OK，65.893s**（fourteenth-acceptance-final.log）。覆盖丢通知补登记、进程死亡释放锁、旧输入、并发编辑、查询取消、发布中断 / 数据库失败恢复、失败不推进和两次 compact 原选材复用。首次用 stdin 分组执行时 Windows spawn 无法重载 <stdin>，已改为有 main 保护的临时文件入口后完整复跑；未改产品或放宽测试。
+
+真实 Tavily keyless → 外扩 → M04 → M07 → 指定字段编辑再次通过，共 **14** 次合成模型请求，外扩 / M04 / M07 / 编辑分别 **5 / 3 / 3 / 3** 次；新版本进入 M07，材料计数保持，外部内容未当用户掌握，旧版本可回读（fourteenth-expansion.log）。据当前恢复组和这条实际搜索 / 读取链勾选 A1.3；模型判断质量仍未验收。
+
+实际 Chromium 永久回归 **5 tests / OK，18.125s**（fourteenth-browser-final.log），另一次性检查四入口 / 空列表 / 名称筛选 / 未知记录 404 重试、原来源弹窗与 Escape、跳至主内容 / Tab / Shift-Tab、迟到历史响应不覆盖当前配置页，以及 1280 / 390px 布局无横向溢出，通过后人工查看 desktop.png / narrow.png（fourteenth-web-final.log、fourteenth-web/）。临时脚本最初误把 tabindex=-1 的主区域当作 Shift-Tab 停点，修正为实际上一导航项；路由等待沿 Playwright 事件驱动完成。旧详情 / 保存异步、409 / 失败留输入、脚本文本渲染由原五项回归保护。M08-R2.3 据此勾选；R2.1 的关联版本 / 子图 / 两列表 / 选材与 R2.2 两类纠错的完整浏览器验收仍待推进，A1.4 不提前完成。
+
+本轮只补验收证据与 Spec 状态，不新增永久测试、依赖或生产路径。全范围 Ruff、离线锁、32 份文档 / 467 个本地链接及 git diff 检查通过。Design、M01、M08 和待办同步，material_revision 仍为 3；真实模型 / Desktop G2、普通终端独立冷启动、物理休眠与远端授权条件保持。全部本批探针、测试、Chromium 和 fixture 已结束；无真实数据迁移或远端写入，Goal 不标整体完成。
 
 <a id="historical-execution"></a>
 

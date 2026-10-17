@@ -1026,3 +1026,7 @@ M05 重分析依赖记录复用 RecordRef / SourceRef，严格区分 waiting 与
 Runtime 登记 / 增量、历史来源参数和归属纠错复用已有模型，删除重复类型 / 枚举 / 字段集合检查；来源顺序、scope 授权、固定版本和字段归属仍是业务判断。对固定 Hermes 已发布的六个同步文件 / Shell 工具，复用 jsonschema 的 validator_for / check_schema / is_valid，在任务子进程现有 registry handler 前校验实际 Schema；wraps 保持上游 kwargs 检查，非法参数返回固定错误，不执行 handler 或输出参数。DistillAI 自有工具继续其 Pydantic 模型 / 错误契约；不新增插件、传输或工具循环。启动检查确认 PM 已有 jsonschema，不安装或改变 PM 环境。
 
 复用清理保留 Windows 根句柄相对操作 / 100ns 时间 / 挂起恢复的已核对窄绑定，以及发布恢复、持久预算、物理来源、200ms 无等待通知等产品规则；这些不是新通用框架。有效载荷与持久格式不变，material_revision 仍为 3。完成证据及 R5.1 / R4.2 状态见总 Plan 第十三批；启动正向独立性、Desktop、实际模型与远端验收仍单列未完成。
+
+### 2026-10-18：SDK 边界与浏览器验收证据（Agent 闭环）
+
+原直连实现实际补验 SSE 截断、响应前断开后 primary_recovery、连接拒绝退额及跨 Store / Runtime / PM 任务重启续额；全部实际发送仍受持久预算门禁。当前 ASGI 的恢复 / 来源 / 外扩到 M07 链、迟到响应与键盘 / 窄屏取得本地证据，详见总 Plan 第十四批。没有改变设计、字段、数据格式或公开行为，material_revision 仍为 3；Plan 仅据新证据完成 A1.3 与 M08-R2.3，实际模型、Desktop 和其余验收状态保持。
