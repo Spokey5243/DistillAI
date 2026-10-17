@@ -8,13 +8,36 @@ import sqlite3
 import threading
 import time
 import uuid
+from typing import Annotated, Any, Literal, NotRequired, TypedDict, get_args
+
+from pydantic import ConfigDict, Field, TypeAdapter, with_config
 
 from .storage import ConflictError, _identifier, _hash, _relative
 from .windows import canonical_directory, FileHandle, pinned_path
+from .sources import Identifier
 
 
-KINDS = {"episode", "knowledge", "cognition", "expansion", "context", "query", "screening", "correction"}
+TaskKind = Literal["episode", "knowledge", "cognition", "expansion", "context", "query", "screening", "correction"]
+KINDS = set(get_args(TaskKind))
 TERMINAL = {"succeeded", "failed", "cancelled", "recovery_conflict"}
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class PublicationScope(TypedDict):
+    root: str
+    paths: NotRequired[Annotated[list[str], Field(min_length=1)] | None]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class RegisterArgs(TypedDict):
+    kind: TaskKind
+    inputs: dict[str, Any]
+    trigger: str
+    scope: NotRequired[PublicationScope | None]
+    dependencies: NotRequired[list[Identifier]]
+
+
+PUBLICATION_SCOPE = TypeAdapter(PublicationScope)
 
 
 class BudgetError(RuntimeError):
@@ -56,8 +79,7 @@ class Runtime:
     def _scope(scope):
         if scope is None:
             return None
-        if not isinstance(scope, dict) or set(scope) - {"root", "paths"} or not isinstance(scope.get("root"), str):
-            raise ValueError("Invalid publication scope")
+        PUBLICATION_SCOPE.validate_python(scope)
         if not Path(scope["root"]).is_absolute():
             raise ValueError("Publication root must be absolute")
         try:
@@ -66,8 +88,6 @@ class Runtime:
             raise ValueError("Publication root is unavailable or unsupported") from exc
         paths = scope.get("paths")
         if paths is not None:
-            if not isinstance(paths, list) or not paths:
-                raise ValueError("Selected scope must contain relative paths")
             paths = sorted({_relative(path).as_posix() for path in paths})
         return {"root": str(root), "paths": paths}
 

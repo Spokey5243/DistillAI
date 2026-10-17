@@ -281,6 +281,18 @@ Ruff、uv lock --check --offline、32 份文档 / 431 条本地链接与 git dif
 
 R5.1 继续保留未勾：HTTP 请求结构和剩余记录字段的完整清点尚未全完；R2.2、Loguru R5.4 与 SQLite / 文件完整故障闭环继续实施。产品组仍打印 APScheduler 停机 CancelledError 诊断，退出与业务断言通过；后续生命周期 / 日志整理须区分正常取消和实际失败，不能静默吞异常。G2、物理 Windows 休眠、真实模型语义和 CI 仍未验，没有真实数据迁移或远端写入。Goal 保持 active，按原完整批准目标持续推进。
 
+## 2026-10-17 第五批：HTTP 与 MCP 请求模型
+
+在 4a6b847f0b453b80db5b65b577276e3fa32cb728 上继续 M01-R2.2 / R5.1。FastAPI 明确路由绑定所属模块 Pydantic 请求模型，保留 Depends(get_api) 的 Host / Origin / 授权 / CSRF 与实际流字节上限；先认证并有界读取，再校验请求，不让自动 body 解析绕过该边界。请求模型在路由建立时创建 TypeAdapter，不另存字段白名单；领域函数共用同一模型，继续做实际来源 / 版本 / 归属判断。任务、通知、查询 / 取消、配置、纠错 / 重分析 / 扩展、反馈、Web bootstrap / 停机 / 重试请求均接入，删除替代的手写字段检查，原错误码作窄映射。
+
+配置更新外层只约束 expected_version / values 两字段；其中 values 是部分修改，继续由 Config.update 合并后校验并返回原字段路径。expected_version 的非 int / bool / 过期版本仍为 409，而 values 非对象仍为 invalid_config / fields.values，不能被新外层模型统一变为默认 422。回归验证 bool / 字符串 / float 版本、非法任务与依赖、未知字段、通知路径、取消 / 重试 / 停机载荷；拒绝后任务、配置版本和 accepting 均不变，错误不含提交正文，无授权先 401。永久断言保护这些公开错误 / 无副作用边界，不断言模型类名或代码布局。
+
+查询与反馈在所属模块定义共享会话、65536 字符非空文本及记录引用；FastMCP 原生签名复用这些类型，实际用户反馈来源只允许同会话 QueueRef，外部网页不能作为用户表现。严格参数在 MCP 传输前拒绝，不触发后端调用。SourceRef 共用 QueueLocator，外部来源 / 用户提交记录使用带 source_kind 的严格 discriminated union，保留 URL / UTC / 注册身份 / 不可变字节版本检查。开放 payload 文档 map 保留，历史版本读取仍以实际登记身份校验，不因当前正文已更新而否认旧字节版本。
+
+完整产品 **193 tests / OK，55.536s**，Chromium **5 tests / OK，17.793s**；移除重复 bootstrap 空 body 判断后 Web 10 / HTTP 7 项再次通过。实际 PythonStdioTransport 工具列表、精确查询、反馈幂等、严格输入和退出后后台存活通过，零模型请求。固定 PM 的实际 AIAgent + Tavily keyless 扩展→M04→M07→用户编辑仍为 5 / 3 / 3 / 3 次；明确归属纠错→空 M04→空 M05→Web 独立认知纠错 5 / 1 / 1 / 4 次通过。都是合成 localhost 模型，未验语义。证据 fifth-product-final.log、fifth-browser.log、fifth-stdio.log、fifth-expansion.log、fifth-corrections.log 在忽略的 .artifacts。
+
+M01-R2.2 当前范围完成。R5.1 保留未勾，继续清点 IPC 程序操作、生命周期 / 交付与持久控制记录的剩余结构校验；原始 Codex / Tavily 上游 payload 不改造成闭合产品记录，继续按上游格式取用。Loguru sink 的各进程归属和 APScheduler 停机取消诊断、SQLite / 文件完整故障窗口仍由 Agent 继续，不需要新的用户技术路线决策。G2、机器休眠、实际模型语义及 CI 未验；无真实数据迁移或远端写入，Goal 仍 active。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

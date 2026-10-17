@@ -12,17 +12,35 @@ import threading
 import time
 import uuid
 from urllib.parse import parse_qs
+from typing import TypedDict
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from itsdangerous import BadSignature, URLSafeSerializer
+from pydantic import ConfigDict, TypeAdapter, ValidationError, with_config
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 import uvicorn
 
-from .config import ConfigError
+from .config import ConfigError, UpdateArgs
 from .storage import ConflictError, _identifier
-from .knowledge import KnowledgeIndex, IndexNotReady
+from .knowledge import EditArgs, KnowledgeIndex, IndexNotReady
+from .cognition import CorrectionArgs as CognitionCorrectionArgs, ReanalysisArgs
+from .context import FeedbackArgs, QueryArgs
+from .episode import CorrectionArgs as EpisodeCorrectionArgs
+from .expansion import RequestArgs as ExpansionRequestArgs
+from .runtime import RegisterArgs
+from .sources import QueueLocator
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class EmptyArgs(TypedDict):
+    pass
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class ReasonArgs(TypedDict):
+    reason: str
 
 
 class _APIError(Exception):
@@ -152,7 +170,7 @@ class _API:
     def bootstrap(self):
         runtime = self.runtime
         path, query = self.path, self.query
-        if query or self._body():
+        if query:
             raise ValueError("Web bootstrap request has no parameters")
         with runtime.store.locked():
             self.server.web_bootstraps = {key: expiry for key, expiry in self.server.web_bootstraps.items() if expiry > time.monotonic()}
@@ -234,10 +252,9 @@ class _API:
             return query_status(runtime, invocation[1]), 200
         if self.command == "POST":
             body = self._body()
-            if invocation[2] and set(body) == {"reason"}:
+            if invocation[2]:
                 return cancel_query(runtime, invocation[1], body["reason"]), 200
-            if not invocation[2] and {"session_key", "query"}.issubset(body) and not set(body) - {"session_key", "query", "knowledge_refs", "relation_refs"}:
-                return start_query(runtime, body["session_key"], body["query"], invocation[1], body.get("knowledge_refs"), body.get("relation_refs")), 200
+            return start_query(runtime, body["session_key"], body["query"], invocation[1], body.get("knowledge_refs"), body.get("relation_refs")), 200
         raise ValueError("Invalid query invocation operation")
 
     def knowledge(self):
@@ -262,8 +279,6 @@ class _API:
     def stop(self):
         runtime = self.runtime
         path, query = self.path, self.query
-        if self._body():
-            raise _APIError(422, "invalid_stop_request")
         with runtime.store.locked():
             runtime._accepting = False
             self.server.stopping.set()
@@ -289,8 +304,6 @@ class _API:
         runtime = self.runtime
         path, query = self.path, self.query
         body = self._body()
-        if set(body) != {"expected_version", "values"}:
-            raise _APIError(422, "invalid_config_request")
         current = runtime.update_config(body["expected_version"], body["values"])
         current["search_environment_configured"] = bool(getattr(runtime, "search_environment_key", ""))
         return current, 200
@@ -299,8 +312,6 @@ class _API:
         runtime = self.runtime
         path, query = self.path, self.query
         body = self._body()
-        if set(body) - {"kind", "inputs", "trigger", "scope", "dependencies"}:
-            raise _APIError(422, "invalid_task_request")
         return self._public_task(runtime.register(**body)), 202
 
     def artifact(self):
@@ -330,20 +341,15 @@ class _API:
         if self.command == "POST" and task_match[2]:
             body = self._body()
             if task_match[2] == "/retry":
-                if body or query:
+                if query:
                     raise _APIError(422, "invalid_retry_request")
                 runtime.retry(task_match[1])
                 return self._public_task(runtime.task(task_match[1])), 202
-            if set(body) != {"reason"} or not isinstance(body["reason"], str):
-                raise _APIError(422, "invalid_cancel_request")
             return self._public_task(runtime.cancel(task_match[1], body["reason"])), 202
 
     def notification(self):
         runtime = self.runtime
         path, query = self.path, self.query
-        body = self._body()
-        if set(body) != {"connector", "session_key"} or body["connector"] != "codex" or not isinstance(body["session_key"], str) or not re.fullmatch(r"[A-Za-z0-9_-]+", body["session_key"]):
-            raise _APIError(422, "invalid_material_notification")
         runtime.wake()
         return {"received": True}, 202
 
@@ -552,8 +558,18 @@ def create_app(runtime, *, control=None, lifespan=None):
     for error in (_APIError, ConfigError, ConflictError, IndexNotReady, FileNotFoundError, KeyError, ValueError, TypeError, RequestValidationError, sqlite3.Error, Exception):
         app.add_exception_handler(error, handle_error)
 
-    def endpoint(name):
+    def endpoint(name, body_model=None, *, error_code="invalid_request"):
+        adapter = TypeAdapter(body_model) if body_model is not None else None
         def invoke(api=Depends(get_api)):
+            if adapter is not None and api.command in {"POST", "PUT"}:
+                try:
+                    adapter.validate_python(api.body)
+                except ValidationError as error:
+                    code = error_code
+                    if name == "task_register" and any(item["type"] == "extra_forbidden" and len(item["loc"]) == 1
+                            for item in error.errors(include_input=False, include_url=False)):
+                        code = "invalid_task_request"
+                    raise _APIError(422, code) from None
             with api.runtime.store.locked():
                 if api.runtime.store.state.failed and name not in {"health", "stop"}:
                     raise _APIError(503, "control_state_unavailable")
@@ -563,13 +579,13 @@ def create_app(runtime, *, control=None, lifespan=None):
         return invoke
 
     app.add_api_route('/v1/related', endpoint('related'), methods=['GET'])
-    app.add_api_route('/v1/reanalysis-requests', endpoint('reanalysis'), methods=['POST'])
-    app.add_api_route('/v1/cognition-corrections', endpoint('cognition_correction'), methods=['POST'])
-    app.add_api_route('/v1/episode-corrections', endpoint('episode_correction'), methods=['POST'])
+    app.add_api_route('/v1/reanalysis-requests', endpoint('reanalysis', ReanalysisArgs), methods=['POST'])
+    app.add_api_route('/v1/cognition-corrections', endpoint('cognition_correction', CognitionCorrectionArgs), methods=['POST'])
+    app.add_api_route('/v1/episode-corrections', endpoint('episode_correction', EpisodeCorrectionArgs), methods=['POST'])
     app.add_api_route('/v1/expansion-status', endpoint('expansion_status'), methods=['GET'])
-    app.add_api_route('/v1/expansion-requests', endpoint('expansion_request'), methods=['POST'])
-    app.add_api_route('/v1/knowledge-edits', endpoint('knowledge_edit'), methods=['POST'])
-    app.add_api_route('/internal/web/bootstrap', endpoint('bootstrap'), methods=['POST'])
+    app.add_api_route('/v1/expansion-requests', endpoint('expansion_request', ExpansionRequestArgs), methods=['POST'])
+    app.add_api_route('/v1/knowledge-edits', endpoint('knowledge_edit', EditArgs), methods=['POST'])
+    app.add_api_route('/internal/web/bootstrap', endpoint('bootstrap', EmptyArgs), methods=['POST'])
     app.add_api_route('/v1/web/session', endpoint('web_session'), methods=['GET'])
     app.add_api_route('/v1/episodes', endpoint('collection'), methods=['GET'])
     app.add_api_route('/v1/knowledge', endpoint('collection'), methods=['GET'])
@@ -580,23 +596,23 @@ def create_app(runtime, *, control=None, lifespan=None):
     app.add_api_route('/v1/hypotheses/{identifier}', endpoint('saved_record'), methods=['GET'])
     app.add_api_route('/v1/expansions/{identifier}', endpoint('saved_record'), methods=['GET'])
     app.add_api_route('/v1/sources', endpoint('source'), methods=['GET'])
-    app.add_api_route('/v1/feedback', endpoint('feedback'), methods=['POST'])
-    app.add_api_route('/v1/queries/{identifier}', endpoint('query_invocation'), methods=['GET', 'POST'])
-    app.add_api_route('/v1/queries/{identifier}/cancel', endpoint('query_invocation'), methods=['POST'])
+    app.add_api_route('/v1/feedback', endpoint('feedback', FeedbackArgs), methods=['POST'])
+    app.add_api_route('/v1/queries/{identifier}', endpoint('query_invocation', QueryArgs), methods=['GET', 'POST'])
+    app.add_api_route('/v1/queries/{identifier}/cancel', endpoint('query_invocation', ReasonArgs), methods=['POST'])
     app.add_api_route('/v1/knowledge/lookup', endpoint('knowledge'), methods=['GET'])
     app.add_api_route('/v1/records/knowledge/{identifier}', endpoint('knowledge'), methods=['GET'])
     app.add_api_route('/v1/records/relation/{identifier}', endpoint('knowledge'), methods=['GET'])
     app.add_api_route('/v1/knowledge/{identifier}/neighbors', endpoint('knowledge'), methods=['GET'])
-    app.add_api_route('/internal/stop', endpoint('stop'), methods=['POST'])
+    app.add_api_route('/internal/stop', endpoint('stop', EmptyArgs, error_code='invalid_stop_request'), methods=['POST'])
     app.add_api_route('/v1/health', endpoint('health'), methods=['GET'])
     app.add_api_route('/v1/config', endpoint('config_read'), methods=['GET'])
-    app.add_api_route('/v1/config', endpoint('config_update'), methods=['PUT'])
-    app.add_api_route('/v1/tasks', endpoint('task_register'), methods=['POST'])
+    app.add_api_route('/v1/config', endpoint('config_update', UpdateArgs, error_code='invalid_config_request'), methods=['PUT'])
+    app.add_api_route('/v1/tasks', endpoint('task_register', RegisterArgs), methods=['POST'])
     app.add_api_route('/v1/tasks/{identifier}/artifacts', endpoint('artifact'), methods=['GET'])
     app.add_api_route('/v1/tasks/{identifier}', endpoint('task'), methods=['GET'])
-    app.add_api_route('/v1/tasks/{identifier}/cancel', endpoint('task'), methods=['POST'])
-    app.add_api_route('/v1/tasks/{identifier}/retry', endpoint('task'), methods=['POST'])
-    app.add_api_route('/v1/material-notifications', endpoint('notification'), methods=['POST'])
+    app.add_api_route('/v1/tasks/{identifier}/cancel', endpoint('task', ReasonArgs, error_code='invalid_cancel_request'), methods=['POST'])
+    app.add_api_route('/v1/tasks/{identifier}/retry', endpoint('task', EmptyArgs, error_code='invalid_retry_request'), methods=['POST'])
+    app.add_api_route('/v1/material-notifications', endpoint('notification', QueueLocator, error_code='invalid_material_notification'), methods=['POST'])
     app.add_api_route('/v1/history', endpoint('history'), methods=['GET'])
 
     @app.get("/web/bootstrap")

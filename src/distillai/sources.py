@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import re
 import uuid
-from typing import Annotated, Literal, NotRequired, TypedDict
+from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
 from pydantic import ConfigDict, Field, TypeAdapter, ValidationError, with_config
 from urllib.parse import urlsplit
@@ -36,9 +36,12 @@ class DraftRecordRef(TypedDict):
 
 
 @with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
-class QueueRef(TypedDict):
+class QueueLocator(TypedDict):
     connector: Literal["codex"]
     session_key: SessionKey
+
+
+class QueueRef(QueueLocator):
     line_start: Annotated[int, Field(ge=1)]
     line_end: Annotated[int, Field(ge=1)]
 
@@ -66,6 +69,39 @@ class QueueEntry(TypedDict):
 
 
 QUEUE_ENTRY = TypeAdapter(QueueEntry)
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class ExternalSource(TypedDict):
+    id: Identifier
+    source_kind: Literal["external"]
+    url: str
+    title: str
+    read_at: str
+    text: NonblankText
+    task_id: NotRequired[Identifier]
+    truncated: NotRequired[bool]
+    provider: NotRequired[str]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class UserSubmission(TypedDict):
+    id: Identifier
+    source_kind: Literal["user_submission"]
+    submitted_at: str
+    reason: NonblankText
+    payload: dict[str, Any]
+    text: NonblankText
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class SubmissionArgs(TypedDict):
+    payload: Annotated[dict[str, Any], Field(min_length=1)]
+    reason: NonblankText
+
+
+SOURCE_RECORD = TypeAdapter(Annotated[ExternalSource | UserSubmission, Field(discriminator="source_kind")])
+SUBMISSION_ARGS = TypeAdapter(SubmissionArgs)
 
 
 def utc(value):
@@ -186,25 +222,26 @@ def _read_versioned(home, ref):
         raise SourceError("Versioned source is unavailable") from None
     if any(not isinstance(value, dict) or value.get("id") != ref["id"] or value.get("source_kind") != ref["source_kind"] for value in (registered, record)):
         raise SourceError("Source version belongs to another identity or kind")
-    if not isinstance(record.get("text"), str) or not record["text"].strip():
-        raise SourceError("Source has no readable excerpt")
+    try:
+        SOURCE_RECORD.validate_python(record)
+    except ValidationError:
+        raise SourceError("Invalid versioned source record") from None
     if ref["source_kind"] == "external":
-        if not isinstance(record.get("url"), str):
-            raise SourceError("External source requires an actual URL")
-        url = urlsplit(record.get("url", ""))
+        url = urlsplit(record["url"])
         if (url.scheme not in {"http", "https"} or not url.hostname or url.username
-                or not isinstance(record.get("title"), str) or utc(record.get("read_at")) is None):
+                or utc(record["read_at"]) is None):
             raise SourceError("External source must retain URL, title and actual read time")
-    elif (utc(record.get("submitted_at")) is None or not isinstance(record.get("reason"), str)
-            or not record["reason"].strip() or not isinstance(record.get("payload"), dict)):
+    elif utc(record["submitted_at"]) is None:
         raise SourceError("User submission must retain its actual input, time and reason")
     return {"ref": dict(ref), "record": record, "text": record["text"],
             "rows": [{"role": "external" if ref["source_kind"] == "external" else "user", "text": record["text"]}]}
 
 
 def record_submission(store, payload, reason, *, identifier=None):
-    if not isinstance(payload, dict) or not payload or not isinstance(reason, str) or not reason.strip():
-        raise SourceError("A user submission requires actual input and a reason")
+    try:
+        SUBMISSION_ARGS.validate_python({"payload": payload, "reason": reason})
+    except ValidationError:
+        raise SourceError("A user submission requires actual input and a reason") from None
     identifier = _identifier(identifier) if identifier is not None else uuid.uuid4().hex
     with store.locked():
         folder = store.home / "user-submissions"

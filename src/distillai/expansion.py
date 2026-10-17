@@ -73,8 +73,17 @@ class ExpansionResult(TypedDict):
     reason: NonblankText
 
 
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class RequestArgs(TypedDict):
+    client_request_id: Annotated[NonblankText, Field(max_length=128)]
+    knowledge_refs: Annotated[list[RecordRef], Field(min_length=1)]
+    question: NonblankText
+    reason: NonblankText
+
+
 EXPANSION_RECORD = TypeAdapter(ExpansionRecord)
 EXPANSION_RESULT = TypeAdapter(ExpansionResult)
+REQUEST_ARGS = TypeAdapter(RequestArgs)
 
 
 def _url(value):
@@ -221,13 +230,9 @@ def tick(runtime, *, now=None):
 
 
 def register_request(runtime, request):
-    if (not isinstance(request, dict) or set(request) != {"client_request_id", "knowledge_refs", "question", "reason"}
-            or any(not _text(request[name]) for name in ("client_request_id", "question", "reason"))
-            or len(request["client_request_id"]) > 128):
-        raise ValueError("Exploration requests require a request identity, question, reason and fixed knowledge references")
+    REQUEST_ARGS.validate_python(request)
     refs = request["knowledge_refs"]
-    if (not isinstance(refs, list) or not refs or any(not isinstance(ref, dict) or set(ref) != {"id", "version"} for ref in refs)
-            or len({_identifier(ref["id"]) for ref in refs}) != len(refs)):
+    if len({ref["id"] for ref in refs}) != len(refs):
         raise ValueError("Explicit exploration requires distinct versioned knowledge references")
     with runtime.store.locked():
         if status(runtime)["unavailable_reason"]:

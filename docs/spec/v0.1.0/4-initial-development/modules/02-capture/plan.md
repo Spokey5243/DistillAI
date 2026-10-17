@@ -54,6 +54,10 @@ uv run --locked python tests/test_capture.py
 
 共用 SourceRef / RecordRef 的严格结构保留在 sources.py，增加 DraftRecordRef / SessionKey / 非空文本供下游直接复用，校验错误不输出来源原文。完整产品 192 项通过，未变更 Hook payload、原始队列或 Desktop 事件适配；G2 继续待验。详见[总 Plan](../../plan.md)。
 
+## 2026-10-17 第五批：HTTP 与 MCP 请求模型
+
+QueueLocator / QueueRef 共用严格会话定义，通知请求复用同一结构；产品外部来源 / 用户提交记录接入 discriminated union，URL / UTC / 实际注册身份与不可变历史版本仍独立核对。原始 Codex payload 继续沿实际格式解析，不把外部可扩展事件强制关字段。完整产品 193 项通过，真实 G2 仍未验。见[总 Plan](../../plan.md)第五批。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

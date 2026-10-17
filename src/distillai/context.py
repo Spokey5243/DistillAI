@@ -4,11 +4,11 @@ import json
 from pathlib import Path
 import re
 import uuid
-from typing import Any, Literal, NotRequired, TypedDict
+from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
-from pydantic import ConfigDict, TypeAdapter, with_config
+from pydantic import ConfigDict, Field, TypeAdapter, with_config
 from .knowledge import KnowledgeIndex
-from .sources import DraftRecordRef, Identifier, NonblankText, RecordRef, SessionKey, SourceRef, Version, queue_path, read_source, scan_queue, contains, now
+from .sources import DraftRecordRef, Identifier, NonblankText, QueueRef, RecordRef, SessionKey, SourceRef, Version, queue_path, read_source, scan_queue, contains, now
 from .storage import atomic_json, ConflictError, _identifier, _hash
 
 
@@ -113,6 +113,33 @@ PREPARED_QUERY_RESULT = TypeAdapter(PreparedQueryResult)
 SELECTION_RESULT = TypeAdapter(SelectionResult)
 
 
+RequestText = Annotated[NonblankText, Field(max_length=65536)]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class QueryArgs(TypedDict):
+    session_key: SessionKey
+    query: RequestText
+    knowledge_refs: NotRequired[list[RecordRef] | None]
+    relation_refs: NotRequired[list[RecordRef] | None]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class FeedbackArgs(TypedDict):
+    client_request_id: RequestText
+    session_key: SessionKey
+    performance: RequestText
+    task: RequestText
+    help: RequestText
+    knowledge_refs: list[RecordRef]
+    relation_refs: list[RecordRef]
+    source_refs: list[QueueRef]
+
+
+QUERY_ARGS = TypeAdapter(QueryArgs)
+FEEDBACK_ARGS = TypeAdapter(FeedbackArgs)
+
+
 def _invocation(runtime, identifier):
     folder = runtime.store.home / "events" / "queries"
     folder.mkdir(exist_ok=True)
@@ -176,18 +203,14 @@ def _direct(runtime, query):
 
 
 def start_query(runtime, session_key, query, invocation_id, knowledge_refs=None, relation_refs=None):
+    QUERY_ARGS.validate_python({"session_key": session_key, "query": query,
+        "knowledge_refs": knowledge_refs, "relation_refs": relation_refs})
     queue_path(runtime.store.home, session_key)
-    if not isinstance(query, str) or not query.strip() or len(query) > 65536:
-        raise ValueError("A nonempty query of at most 65536 characters is required")
     known = {"knowledge_refs": knowledge_refs if knowledge_refs is not None else [],
              "relation_refs": relation_refs if relation_refs is not None else []}
     index = getattr(runtime, "knowledge_index", None) or KnowledgeIndex(runtime.store)
     for field, kind in (("knowledge_refs", "knowledge"), ("relation_refs", "relation")):
-        if not isinstance(known[field], list):
-            raise ValueError("Known records must be references")
         for ref in known[field]:
-            if not isinstance(ref, dict) or set(ref) != {"id", "version"}:
-                raise ValueError("Known records need ID and version")
             index.detail(kind, ref["id"], version=ref["version"])
     request = {"session_key": session_key, "query": query, **known}
     with runtime.store.locked():
@@ -735,14 +758,8 @@ def feedback_status(runtime, feedback_id):
 
 
 def submit_feedback(runtime, request):
-    required = {"client_request_id", "session_key", "performance", "task", "help", "knowledge_refs", "relation_refs", "source_refs"}
-    if (not isinstance(request, dict) or set(request) != required
-            or any(not isinstance(request[name], str) or not request[name].strip() or len(request[name]) > 65536
-                   for name in ("client_request_id", "performance", "task", "help"))):
-        raise ValueError("Feedback needs a stable request ID and the actual performance, task and help")
+    FEEDBACK_ARGS.validate_python(request)
     queue_path(runtime.store.home, request["session_key"])
-    if not isinstance(request["source_refs"], list):
-        raise ValueError("Feedback sources must be a list")
     for ref in request["source_refs"]:
         source = read_source(runtime.store.home, ref)
         if (ref["session_key"] != request["session_key"] or not any(
@@ -750,11 +767,7 @@ def submit_feedback(runtime, request):
             raise ValueError("Feedback requires actual user text in this session")
     index = getattr(runtime, "knowledge_index", None) or KnowledgeIndex(runtime.store)
     for field, kind in (("knowledge_refs", "knowledge"), ("relation_refs", "relation")):
-        if not isinstance(request[field], list):
-            raise ValueError("Feedback targets must be record references")
         for ref in request[field]:
-            if not isinstance(ref, dict) or set(ref) != {"id", "version"}:
-                raise ValueError("Feedback target needs ID and version")
             index.detail(kind, ref["id"], version=ref["version"])
     identifier = _hash(request["client_request_id"].encode("utf-8"))
     with runtime.store.locked():

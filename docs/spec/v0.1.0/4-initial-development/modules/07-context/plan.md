@@ -62,6 +62,10 @@ uv run --locked python -m unittest discover -s tests -p 'test_product_feedback.p
 
 上下文、名称子图、MCP 摘要、注入候选、查询结果与筛选结果接入严格模型，候选 ID 工具 schema 由本模块定义生成。实际版本 / 候选修订 / 重分析依赖和程序准备前后相等判断继续保留。完整产品 192 项及真实 Tavily→知识→M07 3 次准备的实际 PM 链路通过，工具 / HTTP 请求清点继续；Desktop 工具全名、冷启动、compact 交付与语义仍未全验。见[总 Plan](../../plan.md)。
 
+## 2026-10-17 第五批：HTTP 与 MCP 请求模型
+
+HTTP 查询 / 反馈与 FastMCP 原生签名共用 SessionKey、RequestText、RecordRef / QueueRef。空白 query、非法会话、外部网页冒充用户表现来源及未知字段在协议层拒绝，不到后端；实际 stdio 的工具、精确查询、反馈幂等与后台独立存活通过，零模型调用。后台版本 / 事实归属规则保持，Desktop 交付验收仍待 G2。见[总 Plan](../../plan.md)第五批。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

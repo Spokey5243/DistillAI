@@ -6,7 +6,7 @@ import uuid
 from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
 from pydantic import ConfigDict, Field, TypeAdapter, with_config
-from .knowledge import MaintenanceResult, RecordKind as ContentKind, validate_collection as validate_knowledge, _text
+from .knowledge import MaintenanceResult, RecordKind as ContentKind, validate_collection as validate_knowledge
 from .sources import DraftRecordRef, Identifier, NonblankText, RecordRef, SourceRef, Version, read_source, utc, now, contains, record_submission
 from .storage import _identifier, _hash, atomic_json, ConflictError
 
@@ -99,6 +99,13 @@ class CorrectionArgs(TypedDict):
     reason: NonblankText
 
 
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class ReanalysisArgs(TypedDict):
+    client_request_id: Annotated[NonblankText, Field(max_length=200)]
+    record_id: Identifier
+    reason: NonblankText
+
+
 class CognitionResult(MaintenanceResult):
     hypothesis_refs: list[DraftRecordRef]
 
@@ -108,6 +115,7 @@ INLINE_HYPOTHESIS = TypeAdapter(InlineHypothesis)
 SHARED_HYPOTHESIS = TypeAdapter(SharedHypothesis)
 JUDGMENT = TypeAdapter(Judgment)
 CORRECTION_ARGS = TypeAdapter(CorrectionArgs)
+REANALYSIS_ARGS = TypeAdapter(ReanalysisArgs)
 COGNITION_RESULT = TypeAdapter(CognitionResult)
 IDENTIFIERS = TypeAdapter(list[Identifier])
 
@@ -379,9 +387,7 @@ def register_correction(runtime, request):
 
 
 def request_reanalysis(runtime, request):
-    if (not isinstance(request, dict) or set(request) != {"client_request_id", "record_id", "reason"}
-            or not _text(request["client_request_id"]) or len(request["client_request_id"]) > 200 or not _text(request["reason"])):
-        raise ValueError("Reanalysis requires a request ID, record ID and reason")
+    REANALYSIS_ARGS.validate_python(request)
     identifier = _identifier(request["record_id"])
     with runtime.store.locked():
         submission = record_submission(runtime.store, request, request["reason"],

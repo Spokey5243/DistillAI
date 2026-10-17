@@ -25,9 +25,16 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual({tool.name for tool in tools}, {"query_context", "submit_feedback"})
             result = await client.call_tool("query_context", {"session_key": "synthetic", "query": "synthetic question"})
             self.assertEqual(result.data, {"status": "no_match", "items": []})
-            for bad in ({"session_key": False, "query": "x"}, {"session_key": "synthetic", "query": "x", "unknown": True}):
+            before = len(calls)
+            for bad in ({"session_key": False, "query": "x"}, {"session_key": "synthetic", "query": "x", "unknown": True},
+                        {"session_key": "../private", "query": "x"}, {"session_key": "synthetic", "query": " \n"}):
                 with self.subTest(arguments=bad), self.assertRaises(ToolError):
                     await client.call_tool("query_context", bad)
+            with self.assertRaises(ToolError):
+                await client.call_tool("submit_feedback", {"client_request_id": "stable-request", "session_key": "synthetic",
+                    "performance": "actual expression", "task": "synthetic task", "help": "none",
+                    "source_refs": [{"source_kind": "external", "id": "a" * 32, "version": "b" * 64}]})
+            self.assertEqual(len(calls), before)
             result = await client.call_tool("submit_feedback", {"client_request_id": "stable-request", "session_key": "synthetic",
                 "performance": "actual expression", "task": "synthetic task", "help": "none"})
             self.assertEqual(result.data["stage"], "awaiting_source")

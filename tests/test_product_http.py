@@ -107,6 +107,14 @@ class HttpTests(unittest.TestCase):
                                           data={"expected_version": 1, "values": {}})[0], 409)
             self.assertEqual(self.request(server, "/v1/config", method="PUT",
                                           data={"expected_version": 2, "values": {"runtime": {"max_model_calls": 0}}})[0], 422)
+            for version in (True, "2", 2.0):
+                with self.subTest(version=version):
+                    self.assertEqual(self.request(server, "/v1/config", method="PUT",
+                        data={"expected_version": version, "values": {}}), (409, {"error": {"code": "conflict"}}))
+            code, invalid = self.request(server, "/v1/config", method="PUT", data={"expected_version": 2, "values": None})
+            self.assertEqual(code, 422)
+            self.assertEqual(invalid["error"], {"code": "invalid_config", "fields": {"values": "Expected an object"}})
+            self.assertEqual(self.config.read()["version"], 2)
 
     def test_task_dedup_lookup_notification_and_history(self):
         server, runtime = self.backend()
@@ -142,6 +150,31 @@ class HttpTests(unittest.TestCase):
             self.assertEqual(runtime.task(task["id"])["status"], "recovering")
             release.set()
             self.assertEqual(runtime.wait(task["id"])["status"], "cancelled")
+
+    def test_invalid_payloads_keep_errors_private_and_do_not_register_tasks(self):
+        server, runtime = self.backend()
+        identifier = "a" * 32
+        with serving(server):
+            cases = [
+                ("POST", "/v1/tasks", {"kind": "query", "inputs": {}, "trigger": "synthetic", "private": "synthetic-secret"}, "invalid_task_request"),
+                ("POST", "/v1/tasks", {"kind": True, "inputs": {}, "trigger": "synthetic"}, "invalid_request"),
+                ("POST", "/v1/tasks", {"kind": "query", "inputs": {}, "trigger": "synthetic", "dependencies": "synthetic-secret"}, "invalid_request"),
+                ("PUT", "/v1/config", {"values": {}}, "invalid_config_request"),
+                ("POST", "/v1/queries/" + identifier, {"session_key": "synthetic", "query": 1}, "invalid_request"),
+                ("POST", "/v1/queries/" + identifier, {"session_key": "synthetic", "query": "synthetic", "knowledge_refs": [{"id": identifier, "version": True}]}, "invalid_request"),
+                ("POST", "/v1/tasks/" + identifier + "/cancel", {"reason": False}, "invalid_cancel_request"),
+                ("POST", "/v1/tasks/" + identifier + "/retry", {"private": "synthetic-secret"}, "invalid_retry_request"),
+                ("POST", "/v1/material-notifications", {"connector": "codex", "session_key": "../private"}, "invalid_material_notification"),
+                ("POST", "/internal/stop", {"private": "synthetic-secret"}, "invalid_stop_request"),
+            ]
+            for method, path, payload, expected in cases:
+                with self.subTest(path=path, payload=payload):
+                    self.assertEqual(self.request(server, path, method=method, data=payload), (422, {"error": {"code": expected}}))
+            self.assertEqual(self.request(server, "/v1/tasks", method="POST", data={"kind": True},
+                headers={"Authorization": "Bearer wrong"}), (401, {"error": {"code": "unauthorized"}}))
+            self.assertEqual(runtime.tasks(), [])
+            self.assertTrue(runtime._accepting)
+            self.assertEqual(self.config.read()["version"], 1)
 
     def test_oversized_control_body_is_rejected(self):
         server, _ = self.backend()

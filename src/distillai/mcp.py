@@ -11,7 +11,8 @@ from fastmcp import Context, FastMCP
 from fastmcp.exceptions import ToolError
 from loguru import logger
 
-from .sources import RecordRef, SourceRef
+from .context import RequestText
+from .sources import QueueRef, RecordRef, SessionKey
 
 
 class QueryError(RuntimeError):
@@ -109,7 +110,7 @@ def create_server(home, *, lifespan=None):
     prompts = Path(__file__).parent / "prompts"
 
     @server.tool(description=(prompts / "query-tool.txt").read_text(encoding="utf-8"))
-    async def query_context(session_key: str, query: str, ctx: Context, knowledge_refs: list[RecordRef] | None = None,
+    async def query_context(session_key: SessionKey, query: RequestText, ctx: Context, knowledge_refs: list[RecordRef] | None = None,
                             relation_refs: list[RecordRef] | None = None) -> dict[str, Any]:
         try:
             return await ctx.lifespan_context["bridge"].query_context(session_key, query, knowledge_refs, relation_refs)
@@ -117,9 +118,9 @@ def create_server(home, *, lifespan=None):
             raise ToolError(str(error)) from None
 
     @server.tool(description=(prompts / "feedback-tool.txt").read_text(encoding="utf-8"))
-    async def submit_feedback(client_request_id: str, session_key: str, performance: str, task: str, help: str,
+    async def submit_feedback(client_request_id: RequestText, session_key: SessionKey, performance: RequestText, task: RequestText, help: RequestText,
                               ctx: Context, knowledge_refs: list[RecordRef] | None = None,
-                              relation_refs: list[RecordRef] | None = None, source_refs: list[SourceRef] | None = None) -> dict[str, Any]:
+                              relation_refs: list[RecordRef] | None = None, source_refs: list[QueueRef] | None = None) -> dict[str, Any]:
         try:
             return await ctx.lifespan_context["bridge"].submit_feedback(client_request_id, session_key, performance, task, help,
                 knowledge_refs, relation_refs, source_refs)

@@ -3,7 +3,7 @@ from copy import deepcopy
 import json
 import sys
 from pathlib import Path
-from typing import Annotated, Literal, TypedDict
+from typing import Annotated, Any, Literal, TypedDict
 from urllib.parse import urlsplit
 
 from pydantic import ConfigDict, Field, TypeAdapter, ValidationError, with_config
@@ -94,6 +94,13 @@ class ConfigValues(TypedDict):
 
 
 CONFIG_VALUES = TypeAdapter(ConfigValues)
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class UpdateArgs(TypedDict):
+    # Config.update owns conflict status and detailed errors for partial patches.
+    expected_version: Any
+    values: Any
 
 
 class ConfigError(ValueError):

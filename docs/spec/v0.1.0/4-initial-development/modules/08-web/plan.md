@@ -63,6 +63,10 @@ Chromium 安装是联网准备，安装后测试仅用合成 loopback 服务，�
 
 完整证据、收尾测试结果与范围见[总 Plan](../../plan.md)第二批执行记录；本地通过不代替 GitHub CI，未迁移真实数据或执行远端写入。
 
+## 2026-10-17 第五批：HTTP 与 MCP 请求模型
+
+关联 HTTP 写路由接入领域 Pydantic 模型，保留 Host / Origin / CSRF、先认证再有界读 body 与原 409 / 422 错误结构；配置字段路径由原 Config.update 返回。新增无副作用 / 正文不回显回归，完整产品 193 项、浏览器 5 项与最后 Web 10 / HTTP 7 项通过。无 UI 或公开有效载荷改动。见[总 Plan](../../plan.md)第五批。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

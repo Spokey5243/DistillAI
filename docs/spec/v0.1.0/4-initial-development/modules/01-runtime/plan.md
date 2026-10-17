@@ -34,7 +34,7 @@ SQLite 增补：Create `src/distillai/state.py`（只封装具体控制状态 SQ
 ## M01-R2：FastAPI / Uvicorn 替换手写 HTTP
 
 - [x] **R2.1 先保留路由契约。** 从现有 HTTP / Web / MCP 用例列出路径、method、业务载荷、status、error code 和授权要求；将测试启动 fixture 换为真实 ASGI 应用，原业务断言继续使用。FastAPI 默认 422 等若不同，按现有公开错误契约做窄映射，不让替换框架静默改 API。
-- [ ] **R2.2 使用框架能力。** `server.py` 提供 app 创建入口、明确路由、Pydantic 请求模型、Dependencies / 异常处理、JSONResponse / FileResponse；Host / Origin / CSRF 和读取 body 实际尺寸仍作边界检查，不仅相信 Content-Length。路由调用现有业务函数；移除 Handler、手动 headers / 状态行 / chunk 处理和字符串路由大分支。默认文档 / 静态子路由也必须遵守本机授权策略。
+- [x] **R2.2 使用框架能力。** `server.py` 提供 app 创建入口、明确路由、Pydantic 请求模型、Dependencies / 异常处理、JSONResponse / FileResponse；Host / Origin / CSRF 和读取 body 实际尺寸仍作边界检查，不仅相信 Content-Length。路由调用现有业务函数；移除 Handler、手动 headers / 状态行 / chunk 处理和字符串路由大分支。默认文档 / 静态子路由也必须遵守本机授权策略。
 - [x] **R2.3 统一生命周期。** 用 FastAPI lifespan 与 Uvicorn 单进程启动 / 关闭；沿现有启动锁持有一个实例、一个业务 worker。服务 ready 后才发布 instance 信息；同步存储 / 业务工作不阻塞 ASGI event loop，沿现有 worker / 框架线程执行。停止先拒绝新任务、停树 / 恢复，再结束服务、清实例；不以 FastAPI BackgroundTasks 代替持久任务队列。
 - [x] **R2.4 验证框架入口。** 无授权、非法 Host / Origin、超限 body、未知路由、失效任务、409、慢模型时 health / config、并发启动和显式停机复跑原用例；至少一项真实监听 socket 的探针核对绑定地址与启停，TestClient 结果不能替代操作系统生命周期。
 
@@ -124,6 +124,10 @@ IPC 六项实际 Windows 组覆盖未连 / 未认证 / 不回复、双向阻塞�
 ## 2026-10-17 恢复后第四批：共享结构与工具 schema
 
 共享引用与领域模型、工具参数及生成 schema 已接通；本轮 192 项完整产品与 5 项浏览器通过，实际 PM AIAgent 的 43 请求预算组、Episode / 认知链、新材料修订和真实 Tavily 扩展链复跑通过。R5.1 仍有 HTTP 请求 / 剩余记录清点，R2.2 / R5.4 / R6 故障闭环继续未勾；APScheduler 正常停机取消诊断待生命周期整理。细节与合成验证边界见[总 Plan](../../plan.md)。
+
+## 2026-10-17 第五批：HTTP 与 MCP 请求模型
+
+FastAPI 各写路由绑定 Pydantic 请求模型，先执行原认证 / 实际 body 字节限制再校验，业务仍在框架线程与 Store 锁内。配置版本非整数保留 409，部分配置错误仍返回字段路径，任务 / 重试 / 停机等旧错误码与无副作用回归通过。完整产品 193 项与浏览器 5 项通过，R2.2 完成；R5.1 剩余 IPC / 生命周期 / 交付 / 持久控制结构继续清点。见[总 Plan](../../plan.md)第五批。
 
 <a id="historical-execution"></a>
 
