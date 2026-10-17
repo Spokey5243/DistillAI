@@ -1,5 +1,6 @@
 """Publication must preserve user edits and retain recoverable byte versions."""
 from pathlib import Path
+import json
 import os
 import tempfile
 import unittest
@@ -59,6 +60,24 @@ class StorageTests(unittest.TestCase):
             self.store.publish(commit["id"], lambda: None)
         self.assertEqual((self.source / "a.txt").read_bytes(), b"user")
         self.assertNotEqual(self.store.read_commit(commit["id"])["status"], "committed")
+
+    def test_damaged_commit_is_rejected_before_recovery_or_file_changes(self):
+        task_id, work = self.task({"a.txt": b"original"})
+        (work / "a.txt").write_bytes(b"new")
+        commit = self.store.prepare(task_id)
+        with self.store.state.transaction() as connection:
+            original = connection.execute("SELECT record FROM commits WHERE id=?", (commit["id"],)).fetchone()[0]
+        for changed in ({"extra": "ignored"}, {"state": "unknown"}, {"identity": [True, 1, 2]}):
+            record = json.loads(original)
+            record["items"][0].update(changed)
+            damaged = json.dumps(record)
+            with self.store.state.transaction() as connection:
+                connection.execute("UPDATE commits SET record=? WHERE id=?", (damaged, commit["id"]))
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                self.store.recover(commit["id"])
+            self.assertEqual((self.source / "a.txt").read_bytes(), b"original")
+            with self.store.state.transaction(write=False) as connection:
+                self.assertEqual(connection.execute("SELECT status,record FROM commits WHERE id=?", (commit["id"],)).fetchone(), ("prepared", damaged))
 
     def test_raw_relative_paths_cannot_hide_empty_or_dot_segments(self):
         for value in ("a/./b", "a//b", "a/../b", "a/", "CON.txt", "x:stream", "a\\b", "/absolute"):

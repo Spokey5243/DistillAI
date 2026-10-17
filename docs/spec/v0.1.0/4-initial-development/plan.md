@@ -361,6 +361,16 @@ PM 实际 import distillai.hermes 后 Loguru / FastAPI / Uvicorn / FastMCP / Net
 
 全范围 Ruff、离线锁检查、32 份文档 / 456 个本地链接及 git diff 检查通过；本批测试与 PM 探针进程均已退出。统一 Design、M01 / M07 和待办同步，material_revision 仍为 3；没有有效数据迁移或公开 API 变化。R5.1 仍未勾选，后续清点任务 / 提交及其余事件控制记录；已完成的任务引导 / 回复、选材持久模型不重复改写。普通终端独立冷启动、Desktop G2、物理休眠及真实模型语义条件不变，未执行远端写入，Goal 不标整体完成。
 
+## 2026-10-18 第十一批：SQLite 任务与提交严格模型
+
+本批在 33a984d0eaeb009e71f53c7a689b931fc82c7e45 上续接 M01-R5.1。State 用严格 TypeAdapter 校验完整任务 / 独立副本记录和提交清单，包含 attempts、模型次数 / 布尔控制字段、配置快照、依赖 / 版本、文件身份 / 元数据和提交项状态；JSON 列先校验为对象，再组合权威列 / 关联表，缺失幂等键也拒绝。原 SQLite 表 / 事务、prepared 绑定及发布恢复协议不变。TaskKind / PublicationScope 由运行层共用，准备结果直接引用各领域已有模型；搜索包装归 M06，IPC 和持久审计共用实际 web_search / fetch_page 字段。
+
+先复现非法任务写入会覆盖原记录 / 次数、损坏任务 / attempt 会被采用、含未知字段的提交项被恢复为 rolled_back；补三项永久回归后转绿，损坏字节与源文件保持原状。JSON 非对象的列表 / null 在合并前拒绝，避免先抛类型错误；提交路径继续复用原词法检查。既有纠错组验证原 reanalysis_prepared_version / 后置等待字段，不删字段或放宽未知字段。一次性检查另确认缺失幂等键拒绝、非法清单写入不覆盖权威记录 / 文件，未新增永久迁移测试。
+
+最终完整产品 **215 tests / OK，97.822s**（eleventh-product-final.log），实际 Chromium **5 tests / OK，18.859s**（eleventh-browser.log），定向纠错 **10 tests / OK，4.569s**。实际 PM AIAgent 预算 / 文件 / Shell / 查询 / 来源 / 503 恢复为 **43** 个合成 provider 请求，Episode → M04 → M05 为 **22** 次、真实 Tavily keyless → M04 → M07 → 用户编辑为 **14** 次。另实际归属纠错 → M04 → M05 / 独立认知纠错 **11** 次、新材料旧边界修订 / M04 / M05 **12** 次通过，验证同提交等待、历史来源读取和最新版本解除。证据 eleventh-direct-hermes.log、eleventh-episode.log、eleventh-expansion.log、eleventh-corrections.log、eleventh-material.log；生成 provider 仍是合成 localhost，不作为真实语义质量验收。
+
+实际 PM 导入产品框架集合为空（eleventh-pm-import.log）；合成离线迁移、重复核对、预算保留、整根回退及新采集拒绝回退通过（eleventh-migration.log）。全范围 Ruff、离线锁、32 份文档 / 457 个本地链接及 git diff 检查通过。统一 Design、M01 与待办同步，material_revision 仍为 3，无真实数据迁移或远端写入。R5.1 仍未勾选，下一步为私有配置、episode 游标、外扩覆盖及 M07 调用 / 反馈控制记录清点；外部验收和 Goal 未完成条件保持。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

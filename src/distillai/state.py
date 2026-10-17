@@ -5,6 +5,188 @@ import os
 from pathlib import Path
 import sqlite3
 import uuid
+from typing import Annotated, Any, Literal, NotRequired, TypedDict
+
+from pydantic import ConfigDict, Field, TypeAdapter, with_config
+
+from .config import ConfigValues, PositiveInt
+from .sources import Identifier, NonblankText, SourceRef, Version
+from .storage import _relative
+from .cognition import CognitionResult
+from .context import AuditedRecord, ContextResult, SelectionResult
+from .episode import EpisodeResult
+from .expansion import ExpansionResult, WebCall
+from .knowledge import MaintenanceResult
+
+
+TaskKind = Literal["episode", "knowledge", "cognition", "expansion", "context", "query", "screening", "correction"]
+NonnegativeInt = Annotated[int, Field(ge=0)]
+FileIdentity = Annotated[list[NonnegativeInt], Field(min_length=3, max_length=3)]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class PublicationScope(TypedDict):
+    root: str
+    paths: NotRequired[Annotated[list[str], Field(min_length=1)] | None]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class FileInfo(TypedDict):
+    identity: FileIdentity
+    attributes: NonnegativeInt
+    links: NonnegativeInt
+    created: NonnegativeInt
+    modified: NonnegativeInt
+    size: NonnegativeInt
+
+
+class FileVersion(FileInfo):
+    version: Version
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class WorkspaceRecord(TypedDict):
+    id: Identifier
+    source: NonblankText
+    workspace: NonblankText
+    allowed_paths: list[str] | None
+    baseline: dict[str, FileVersion]
+    directories: dict[str, FileInfo]
+    workspace_attributes: dict[str, NonnegativeInt]
+    workspace_directory_attributes: dict[str, NonnegativeInt]
+    commit_id: NotRequired[Identifier | None]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class ConfigSnapshot(TypedDict):
+    version: PositiveInt
+    values: ConfigValues
+    api_key_configured: bool
+    search_key_configured: NotRequired[bool]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class GenerationAttempt(TypedDict):
+    state: Literal["counted", "not_sent"]
+    request_version: Version | None
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class TaskError(TypedDict):
+    code: NonblankText
+    cause: NotRequired[NonblankText]
+    detail: NotRequired[dict[str, Any]]
+
+
+class WebCallRecord(WebCall):
+    result_version: Version
+    access_mode: Literal["keyed", "keyless"]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class PreparedEpisode(TypedDict):
+    result: EpisodeResult
+    processed_line: NotRequired[NonnegativeInt]
+    material_updates: NotRequired[NonnegativeInt]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class TaskRecord(TypedDict):
+    id: Identifier
+    kind: TaskKind
+    inputs: dict[str, Any]
+    input_version: Version
+    trigger: str
+    scope: PublicationScope | None
+    dedup: Version
+    dedup_aliases: list[Version]
+    started: bool
+    order: PositiveInt
+    dependencies: list[Identifier]
+    status: Literal["queued", "running", "validating", "recovering", "recovery_conflict", "succeeded", "failed", "cancelled"]
+    model_calls: NonnegativeInt
+    config: ConfigSnapshot
+    authorized: bool
+    prompt_version: Version
+    commit_id: Identifier | None
+    result_version: Version | None
+    post_registered: bool
+    error: TaskError | None
+    cancel_reason: str | None
+    source: NotRequired[NonblankText]
+    workspace: NotRequired[NonblankText]
+    allowed_paths: NotRequired[list[str] | None]
+    baseline: NotRequired[dict[str, FileVersion]]
+    directories: NotRequired[dict[str, FileInfo]]
+    workspace_attributes: NotRequired[dict[str, NonnegativeInt]]
+    workspace_directory_attributes: NotRequired[dict[str, NonnegativeInt]]
+    generation_attempts: NotRequired[dict[Identifier, GenerationAttempt]]
+    budget_exhausted: NotRequired[bool]
+    execution_input_version: NotRequired[Version]
+    model_output_version: NotRequired[Version]
+    boundary_evaluations: NotRequired[list[Version]]
+    episode_source_reads: NotRequired[dict[str, Version]]
+    episode_revision_version: NotRequired[Version]
+    allocated_record_ids: NotRequired[dict[Identifier, Literal["knowledge", "relation", "observation", "hypothesis"]]]
+    allocated_observation_sources: NotRequired[dict[Version, Identifier]]
+    allocated_candidate_ids: NotRequired[list[Identifier]]
+    external_source_refs: NotRequired[list[SourceRef]]
+    web_calls: NotRequired[list[WebCallRecord]]
+    read_record_refs: NotRequired[list[AuditedRecord]]
+    read_source_refs: NotRequired[list[SourceRef]]
+    query_read_performed: NotRequired[bool]
+    query_prepared: NotRequired[bool]
+    reanalysis_prepared_version: NotRequired[Version]
+    reanalysis_resolved_ids: NotRequired[list[Identifier]]
+    episode_prepared: NotRequired[PreparedEpisode]
+    knowledge_prepared: NotRequired[MaintenanceResult]
+    cognition_prepared: NotRequired[CognitionResult]
+    expansion_prepared: NotRequired[ExpansionResult]
+    context_prepared: NotRequired[ContextResult]
+    selection_prepared: NotRequired[SelectionResult]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class DirectoryChange(TypedDict):
+    path: NonblankText
+    kind: Literal["directory"]
+    state: Literal["pending", "applying", "applied", "restored"]
+    identity: FileIdentity | None
+
+
+class FileChange(DirectoryChange):
+    kind: Literal["file"]
+    before: Version | None
+    after: Version | None
+    baseline: FileVersion | None
+    backup: Annotated[str, Field(pattern=r"^\.distillai-[0-9a-f]{32}-[0-9]+\.deleted$")] | None
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class RecoveryConflict(TypedDict):
+    path: NonblankText
+    error: NonblankText
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class CommitRecord(TypedDict):
+    id: Identifier
+    task_id: Identifier
+    source: NonblankText
+    status: Literal["prepared", "committed", "rolled_back", "recovery_conflict"]
+    items: list[DirectoryChange | FileChange]
+    conflicts: NotRequired[list[RecoveryConflict]]
+
+
+TASK_RECORD = TypeAdapter(TaskRecord)
+WORKSPACE_RECORD = TypeAdapter(WorkspaceRecord)
+COMMIT_RECORD = TypeAdapter(CommitRecord)
+JSON_OBJECT = TypeAdapter(dict[str, Any], config=ConfigDict(strict=True, hide_input_in_errors=True))
+
+
+def _task_record(record):
+    (TASK_RECORD if "kind" in record else WORKSPACE_RECORD).validate_python(record)
+    return record
 
 
 def _json(value):
@@ -92,6 +274,7 @@ class State:
         if connection is None:
             with self.transaction() as connection:
                 return self.save_task(task, connection=connection)
+        _task_record(task)
         separate = {"id", "kind", "status", "order", "model_calls", "dedup", "dedup_aliases", "dependencies", "generation_attempts"}
         record = {key: value for key, value in task.items() if key not in separate}
         connection.execute("""INSERT INTO tasks VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
@@ -113,16 +296,16 @@ class State:
         row = connection.execute("SELECT kind,status,task_order,model_calls,record FROM tasks WHERE id=?", (identifier,)).fetchone()
         if row is None:
             raise FileNotFoundError("Task not found")
-        record = {**json.loads(row[4]), "id": identifier}
+        record = {**JSON_OBJECT.validate_json(row[4]), "id": identifier}
         if row[0] is not None:
             keys = [key[0] for key in connection.execute("SELECT key FROM task_keys WHERE task_id=? ORDER BY position", (identifier,))]
             record.update(kind=row[0], status=row[1], order=row[2], model_calls=row[3],
-                dedup=keys[0], dedup_aliases=keys[1:],
+                dedup=keys[0] if keys else None, dedup_aliases=keys[1:],
                 dependencies=[item[0] for item in connection.execute("SELECT dependency_id FROM dependencies WHERE task_id=? ORDER BY position", (identifier,))])
-            attempts = {key: json.loads(value) for key, value in connection.execute("SELECT attempt_id,record FROM attempts WHERE task_id=? ORDER BY rowid", (identifier,))}
+            attempts = {key: JSON_OBJECT.validate_json(value) for key, value in connection.execute("SELECT attempt_id,record FROM attempts WHERE task_id=? ORDER BY rowid", (identifier,))}
             if attempts:
                 record["generation_attempts"] = attempts
-        return record
+        return _task_record(record)
 
     def read_task(self, identifier):
         with self.transaction(write=False) as connection:
@@ -136,6 +319,9 @@ class State:
         if connection is None:
             with self.transaction() as connection:
                 return self.save_commit(record, connection=connection)
+        COMMIT_RECORD.validate_python(record)
+        for item in record["items"]:
+            _relative(item["path"])
         connection.execute("""INSERT INTO commits VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET
             task_id=excluded.task_id,status=excluded.status,record=excluded.record""",
             (record["id"], record["task_id"], record["status"], _json({key: value for key, value in record.items() if key not in {"id", "task_id", "status"}})))
@@ -145,7 +331,11 @@ class State:
             row = connection.execute("SELECT task_id,status,record FROM commits WHERE id=?", (identifier,)).fetchone()
             if row is None:
                 raise FileNotFoundError("Commit not found")
-            return {**json.loads(row[2]), "id": identifier, "task_id": row[0], "status": row[1]}
+            record = {**JSON_OBJECT.validate_json(row[2]), "id": identifier, "task_id": row[0], "status": row[1]}
+            COMMIT_RECORD.validate_python(record)
+            for item in record["items"]:
+                _relative(item["path"])
+            return record
 
     def current_config(self):
         with self.transaction(write=False) as connection:

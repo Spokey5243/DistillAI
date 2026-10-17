@@ -13,6 +13,7 @@ from typing import Annotated, Any, Literal, NotRequired, TypedDict
 from pydantic import ConfigDict, Field, TypeAdapter, with_config
 
 from .config import ModelConnection, PositiveInt
+from .expansion import WebCall
 from .ipc import MAX_MESSAGE
 from .runtime import BudgetError, TaskKind
 from .sources import Identifier, NonblankText, read_source
@@ -62,12 +63,6 @@ class GenerationAttempt(TypedDict):
 
 class GenerationRequest(GenerationAttempt):
     request: dict[str, Any]
-
-
-@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
-class WebCall(TypedDict):
-    tool: Literal["web_search", "fetch_page"]
-    arguments: dict[str, Any]
 
 
 class WebResponse(WebCall):

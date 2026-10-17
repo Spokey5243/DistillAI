@@ -8,24 +8,18 @@ import sqlite3
 import threading
 import time
 import uuid
-from typing import Annotated, Any, Literal, NotRequired, TypedDict, get_args
+from typing import Any, NotRequired, TypedDict, get_args
 
-from pydantic import ConfigDict, Field, TypeAdapter, with_config
+from pydantic import ConfigDict, TypeAdapter, with_config
 
 from .storage import ConflictError, _identifier, _hash, _relative
 from .windows import canonical_directory, FileHandle, pinned_path
 from .sources import Identifier
+from .state import PublicationScope, TaskKind
 
 
-TaskKind = Literal["episode", "knowledge", "cognition", "expansion", "context", "query", "screening", "correction"]
 KINDS = set(get_args(TaskKind))
 TERMINAL = {"succeeded", "failed", "cancelled", "recovery_conflict"}
-
-
-@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
-class PublicationScope(TypedDict):
-    root: str
-    paths: NotRequired[Annotated[list[str], Field(min_length=1)] | None]
 
 
 @with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))

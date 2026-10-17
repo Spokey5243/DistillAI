@@ -2,6 +2,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from pathlib import Path
+import json
 import multiprocessing
 import sqlite3
 import tempfile
@@ -33,6 +34,39 @@ class StateTests(unittest.TestCase):
         self.config = Config(self.store)
         self.runtime = Runtime(self.store, self.config, lambda task, control: {}, lambda task, result: None)
         self.addCleanup(self.runtime.close)
+
+    def test_invalid_task_write_preserves_the_previous_record_and_budget(self):
+        task = self.runtime.register("query", {}, "strict-task-write")
+        for changed in ({"model_calls": True}, {"started": "false"}, {"extra": "ignored"}):
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                self.store.save_task({**task, **changed})
+            self.assertEqual(self.runtime.task(task["id"]), task)
+
+    def test_damaged_task_and_attempt_records_are_not_adopted(self):
+        task = self.runtime.register("query", {}, "strict-task-read")
+        with self.store.state.transaction() as connection:
+            original = connection.execute("SELECT record FROM tasks WHERE id=?", (task["id"],)).fetchone()[0]
+        for changed in ({"authorized": 1}, {"post_registered": "false"}, {"extra": "ignored"}, [], None):
+            damaged = json.dumps({**json.loads(original), **changed} if isinstance(changed, dict) else changed)
+            try:
+                with self.store.state.transaction() as connection:
+                    connection.execute("UPDATE tasks SET record=? WHERE id=?", (damaged, task["id"]))
+                with self.subTest(changed=changed), self.assertRaises(ValueError):
+                    self.runtime.task(task["id"])
+                with self.store.state.transaction(write=False) as connection:
+                    self.assertEqual(connection.execute("SELECT record FROM tasks WHERE id=?", (task["id"],)).fetchone()[0], damaged)
+            finally:
+                with self.store.state.transaction() as connection:
+                    connection.execute("UPDATE tasks SET record=? WHERE id=?", (original, task["id"]))
+        with self.store.state.transaction() as connection:
+            connection.execute("INSERT INTO attempts VALUES(?,?,?)", (task["id"], "a" * 32, '{"state":"unknown","request_version":null}'))
+        try:
+            with self.assertRaises(ValueError):
+                self.runtime.tasks()
+        finally:
+            with self.store.state.transaction() as connection:
+                connection.execute("DELETE FROM attempts WHERE task_id=?", (task["id"],))
+        self.assertEqual(self.runtime.task(task["id"]), task)
 
     def test_registration_and_dependencies_are_atomic_and_deduplicated(self):
         def register(_):

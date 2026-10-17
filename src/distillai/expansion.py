@@ -30,6 +30,12 @@ FETCH_ARGS = TypeAdapter(FetchArgs)
 
 
 @with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
+class WebCall(TypedDict):
+    tool: Literal["web_search", "fetch_page"]
+    arguments: dict[str, Any]
+
+
+@with_config(ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True))
 class CandidateEndpoint(TypedDict):
     candidate: NonblankText
 
