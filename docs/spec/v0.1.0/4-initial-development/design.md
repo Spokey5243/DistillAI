@@ -1040,3 +1040,7 @@ Runtime 登记 / 增量、历史来源参数和归属纠错复用已有模型，
 MCP 复用后台时直接采用启动模块已有 INSTANCE_RECORD / INSTANCE_HEALTH，严格拒绝布尔 protocol、非布尔 ready 与未知字段，再比较实例身份；无新增 schema / 字段或协议。实际 stdio → AIAgent 的查询只读、固定版本读取审计、普通名额排队与单调用取消完成本地验收。测试预启动后台存活不代替独立冷启动 / Desktop；生成 provider 仍合成。详见总 Plan 第十六批。
 
 实际外扩周期重排、批次公平性与空闲重启已取得证据；在途停机则暴露 cancelled / runtime_stopping 的 pending 不能继续、显式 retry 又拒绝取消任务的问题。该恢复策略尚待用户决定，保留原输入 / 次数 / pending，不在本次自行改动取消终态或重试规则；具体问题与独立可继续工作见 pending。这里只记录实施事实与未决项，material_revision 仍为 3，M06-R2.1 不提前完成。
+
+### 2026-10-18：M06 搜索交付与发布边界验收（Agent 闭环）
+
+固定 PM 的真实任务首帧验证搜索私有 key / 固定启动环境优先级、清除 / 脱敏与版本冻结；上游 Tavily 结合 HTTPX MockTransport 验证错误、固定 endpoint、响应尺寸和 keyless / keyed headers。实际 keyless 主要来源及 AIAgent 外扩 → M04 → M07 链复跑通过；逐项引用归属、未核查缺口、第 16 次可发布 / 第 17 次拒发且不交下游取得新证据，M06-R1.4 / R2.2 完成。模型响应仍为合成，语义及在途停机恢复不因此通过。未改生产行为、字段、格式或依赖，material_revision 仍为 3，详见总 Plan 第十七批。

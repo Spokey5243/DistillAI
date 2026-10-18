@@ -23,12 +23,12 @@ Modify：`src/distillai/expansion.py`、`tools.py`、`hermes.py` 及搜索私有
 - [x] **R1.1 固定上游调用边界。** 按总 Plan 的 Hermes SHA 核对 `plugins/web/tavily/provider.py` 的 `TavilyWebSearchProvider.search/extract`、`_tavily_request` 和 `_normalize_tavily_*`。明确公开 provider 读取环境 / 配置，私有请求函数可传 `api_key`；不得把它们当稳定公共 SDK。
 - [x] **R1.2 复用完整请求路径。** 在已有 PM 任务进程使用固定 Tavily 实现：优先 provider 方法且每任务配置隔离；若其隐式环境读取会突破固定配置，调用同文件接受显式 key 的窄请求 / 归一化函数，仍不复制 HTTP 代码。固定官方 endpoint，清掉继承的 `TAVILY_BASE_URL` 和个人配置入口；私有连接参数不进入模型载荷 / 日志。删除产品 `tavily_request` 中的 urllib、headers、payload HTTP 编解码和重复结果适配。
 - [x] **R1.3 保留程序来源身份。** `web_search` / `fetch_page` 仍只登记给 M06，框架注册与 untrusted 包装复用上游能力。搜索结果只作为候选；实际提取正文 / URL / 读取时间经 M01 管道交父进程确认、保存不可变 external 来源、返回产品 SourceRef。取消 / 过时任务的晚结果不得发布。搜索密钥进入当前任务进程是总 Plan 待批准边界，不能仍声称父进程独占。
-- [ ] **R1.4 验证新组合。** 私有配置 key 优先于固定启动环境；空 key 使用已选 keyless，显式清除 / 空脱敏语义沿现有配置。用实际 Search / Extract 查一项主要来源，记录实际 URL / 文本 / 截断 / 时间；限流 / 权限 / 读取失败保留明确错误，不退回其他供应商、不用摘要冒充全文。验证搜索本身不计模型生成，后续推理仍计。
+- [x] **R1.4 验证新组合。** 私有配置 key 优先于固定启动环境；空 key 使用已选 keyless，显式清除 / 空脱敏语义沿现有配置。用实际 Search / Extract 查一项主要来源，记录实际 URL / 文本 / 截断 / 时间；限流 / 权限 / 读取失败保留明确错误，不退回其他供应商、不用摘要冒充全文。验证搜索本身不计模型生成，后续推理仍计。
 
 ## M06-R2：复用覆盖进度与逐主张核查
 
 - [ ] **R2.1 复用定时触发并复跑公平性。** 3600 秒的周期唤醒由 M01 的 APScheduler IntervalTrigger 执行，配置更新重排下一次等待，重启从持久外扩状态重建 / 检查已到期项，不自建周期线程；回调仍用原 tick 判断是否能登记业务任务。每批最多 10 个已有知识点为可配置初值，新批次生效不清覆盖；稳定 ID 循环让历史节点仍轮到。无新依据 / 变化 / 用户请求不反复探索，失败不推进；retry 留原次数，重探用已有 client_request_id / 独立提交来源。
-- [ ] **R2.2 复跑主张与下游。** expansions 保留 claims / proposed_connections / open_questions，各项引用本次确已读取来源；supported / conflicting 不可借整体摘要跨项背书。未核查保留缺口，第 16 次完成可发布，仍要第 17 次失败不发布 / 不交 M04。成功版本沿原入口交 M04、图与 M07，外部结果不登记用户掌握分析。
+- [x] **R2.2 复跑主张与下游。** expansions 保留 claims / proposed_connections / open_questions，各项引用本次确已读取来源；supported / conflicting 不可借整体摘要跨项背书。未核查保留缺口，第 16 次完成可发布，仍要第 17 次失败不发布 / 不交 M04。成功版本沿原入口交 M04、图与 M07，外部结果不登记用户掌握分析。
 - [ ] **R2.3 真实模型审阅。** 使用 a / b / 候选 e：只有 e-a 原文支持时 e-b 明确保留未核查；比较双端连接、单端 c / d 和必要先备的定性理由。保存主要来源、实际模型判断 / 版本及 M04 → M07 结果，不以搜索排序 / 节点度数作价值规则。
 
 ## 验证、测试必要性与依赖
@@ -67,6 +67,14 @@ uv run --locked python -m unittest discover -s tests -p 'test_product_expansion.
 实际 AsyncIOScheduler / service_lifespan / SQLite 合成探针验证默认 3600 秒、配置改为 1 秒后下一次等待重排；初批 10 个、随后配置批次 1 个不清已有覆盖。失败后两个实际调度事件不重复创建或推进覆盖；显式 retry 保留原输入与已用 1 次许可后完成。空闲关闭并重开 Store / Config / Runtime，持久已到期项继续，从覆盖 12 到 13；旧任务输入 / 次数保持，无变化再经两个实际事件不重复探索。使用合成执行回调，真实模型请求 0，不作模型语义证据。
 
 另单独复现：周期任务在途停止后为 cancelled / runtime_stopping，已用次数保留；重启 tick 仍指向该终态 pending，retry 又拒绝 cancelled，因此该周期待办无法继续。初版调度探针曾混入此在途场景而失败，后用公开 scheduler.pause 隔离空闲重启，并独立复现问题。恢复策略需要用户决定，具体问题、影响与可继续工作见[待办](../../pending.md)。不擅自清 pending、重建任务或放开取消重试，R2.1 保持未完成；R1.4 / R2.2 仍可独立续接。完整产品 230 tests / OK，详细证据见[总 Plan](../../plan.md)第十六批。
+
+## 2026-10-18 第十七批：搜索交付与逐项发布验收
+
+固定 PM / Hermes 的实际 TaskPipe 首帧验证五种合成凭证条件：私有 key 优先、空脱敏输入保留、显式清除后固定启动环境回退、两者为空时 keyless、任务登记后私有配置变化仍取原版本。实际子进程环境不含继承 Tavily key / base override，任务 inputs 不含密钥；在 SDK 初始化前截获并停止，模型请求 0。另验证 16,000 字符截断、URL / read_at 和不可变正文一致。
+
+固定上游 _tavily_request / 归一化与产品 HTTPX 窄适配在实际 PM 环境通过 27 次 MockTransport 请求：keyed / keyless headers，401 / 403、402 / 429 / 432 / 433、500 / 302、超时、超尺寸、坏结构与 Extract 失败；错误不带原响应 / 私有 canary，不降级供应商，非固定 endpoint 在发送前拒绝。实际 keyless Search / Extract 再取官方正文 6,692 字符，保存 URL / 时间 / truncated=false；外扩 → M04 → M07 → 用户编辑的 5 / 3 / 3 / 3 次合成生成链通过，搜索 / 提取不另计生成，R1.4 完成。
+
+六种逐项证据拒绝检查覆盖 supported / conflicting 的缺失引用、非本任务读取引用和试图以已有主张证据给另一连接背书；各自确已读来源的两状态可保存，unverified 连接 / 开放问题保留，不登记 M05。实际 PM AIAgent 在第 16 次完成时可发布并登记一项 M04；请求第 17 次时只到 provider 16 次，任务 BudgetError、无发布 / 覆盖 / M04，知识原字节保持。结合当前 12 项永久外扩契约与实际 M04 → 图 / M07 交接，R2.2 完成。模型响应仍合成，R2.3 不勾选；R2.1 的在途停机策略仍待用户，详见[总 Plan](../../plan.md)第十七批及[待办](../../pending.md)。
 
 <a id="historical-execution"></a>
 

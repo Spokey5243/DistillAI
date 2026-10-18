@@ -445,6 +445,22 @@ M07 查询记录区分直接结果 / 后台任务 / 提前取消，反馈区分 
 
 本批同步 Design、M01 / M06 / M07 Plan 和待办；material_revision 仍为 3。全范围 Ruff、离线锁、32 份文档 / 477 个本地链接与 git diff 检查通过；本批探针和任务子进程均已退出。README 启动 / 用户流程、配置及前端均未变化，无需改 README 或重跑浏览器验收。后续可独立推进 M06-R1.4 搜索凭证优先级 / 错误与 R2.2 主张 / 预算发布边界；已完成的查询和空闲调度证据不重复实施。普通终端独立后台、Desktop、物理休眠、实际模型语义与远端授权仍单列，Goal 不标整体完成。
 
+## 2026-10-18 第十七批：M06 搜索与发布边界验收
+
+在 588a9e21ef8d9896be6484a7fd5386aff3a52b13 的干净任务分支核对规则、批准 Plan、Goal、固定 Hermes SHA / PM 环境、GitHub 账号 / 默认分支与 Issue #4 OPEN；无其他聊天修改。当前 M06-R1.4 / R2.2 实现已具备，按 test-necessity-review 复用永久测试与临时实际探针，未改生产代码、依赖、Prompt、永久测试或真实数据。
+
+现有外扩 **12 tests / OK，2.239s**（seventeenth-expansion-tests.log）。实际 TaskPipe / 任务子进程首帧验证五种合成凭证选择：私有配置优先于固定启动环境、空脱敏输入不抹 key、显式 null 清除后回退、两者为空 keyless、登记后更新私有配置仍用任务旧版本。继承的 TAVILY_API_KEY / TAVILY_BASE_URL 不进入子进程环境，连接 key 不进入业务 inputs；捕获首帧后停止实际 Job，SDK / 模型未初始化。另以原工具确认 16,000 字符截断、URL / 时间与不可变字节版本（seventeenth-key-delivery.log / .json）；真实供应商 / 模型请求均 0。
+
+实际 PM 解释器中，固定上游 Tavily 请求 / 归一化与产品 _tavily_client / _search_tool 经过 **27 次 HTTPX MockTransport 请求**：keyed / keyless 的 Authorization / access-mode、401 / 403 权限、402 / 429 / 432 / 433 限流、500 / 302、读取超时、超过 2 MiB、坏结果、Extract 失败。错误保留对应 code / HTTP status，不返回供应商响应正文或合成私有 canary；自定义 endpoint 在发送前拒绝，provider.httpx 离开后恢复（seventeenth-search-adapter.log / .json）。该组无供应商 / 模型网络，不冒充真实账号额度验收。
+
+实际 keyless Search / Extract 读取 https://docs.tavily.com/documentation/keyless，取得 **6,692 字符、truncated=false、read_at=2026-10-18T02:19:30.651334Z**，完整正文 / URL / 读取时间及搜索候选 / 提取结果保存在忽略的 seventeenth-primary-source.json。实际 AIAgent 外扩 / M04 / M07 / 用户编辑 **5 / 3 / 3 / 3，共 14 次 localhost 合成生成**；搜索和提取不增加模型计数，未核查连接保持、外部来源不算用户掌握、新知识版本进入 M07、材料更新次数不变、历史版本保持（seventeenth-m06-chain-final.log）。首次包装脚本漏 __main__ 保护导致 Windows spawn 重入、EOF 且模型调用 0；补保护后复跑通过，未将临时探针错误归为产品缺陷。
+
+逐项证据临时检查 **6 种拒绝 / 通过**：supported / conflicting 各拒绝空来源、非本任务读取引用和另一连接无独立引用；实际已读来源的两种状态可保存，unverified 连接及开放问题保留。成功后只登记一项 M04、不登记 M05，覆盖正确；模型 / 供应商请求 0（seventeenth-claims.log / .json）。此处验证引用归属与结构，不用合成主张替代语义审阅。
+
+实际固定 PM AIAgent 另验 **16 次完成 / 请求 17 次**，两任务实际各只到合成 provider **16 次**，均完成真实 keyless Search / Extract。前者发布固定版本、保留未核查连接并登记一项 M04；后者 BudgetError、commit_id / result_version 为空、无权威外扩 / 覆盖 / M04，知识原字节保持，活动任务 / Job 排空（seventeenth-m06-budget.log / .json）。首次临时脚本漏注册 importlib 模块导致 inspect.getsource 失败，未启动任务；修正后取得上述证据。
+
+M06-R1.4 / R2.2 据新证据勾选；R2.1 保留在途停机恢复策略待决，R2.3 保留实际模型定性审阅。全范围 Ruff、离线依赖锁、32 份文档 / 479 个本地链接和 git diff 检查通过，本批探针 / 任务子进程已退出。同步统一 Design、M06 Plan、Spec 入口与 pending；设计 / 公开流程不变，material_revision 仍为 3，无需改用户启动 README 或重跑浏览器 / 完整产品组。后续逐项核对其余批准 Plan 的独立本地部分；Desktop、普通终端独立后台、物理休眠、实际私有模型配置 / 语义与当前 SHA 的 PR / CI 仍待相应条件，Goal 不标整体完成。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

@@ -2,7 +2,7 @@
 
 2026-10-17，用户已批准重写总 Plan 与八模块 Plan，统一 Design 修订 3 已同步；当前持续实施重构与新功能。Goal 与半小时续接检查已启用，需要用户决策的事项写入 pending.md。下方此前草案状态与旧完成比例保留为历史，当前以 Plan 的批准记录和执行证据为准。
 
-2026-10-18 第十五批：当前框架下 M08 完整浏览器验收完成，模块为 implemented；M03 修订交接和 M04 三类维护链机械验收完成，七组语义材料来源 / Prompt 已复核。真实模型、Desktop G2、独立冷启动、物理休眠与 PR / CI 仍未完成，详见[总 Plan](plan.md)与[待办](pending.md)。
+2026-10-18 第十七批：M06 搜索配置 / 上游错误与逐项发布边界验收完成，实际 keyless 主要来源、M04 → M07 和 16 / 17 次生成边界取得证据；在途停机恢复策略待决。M08 完整浏览器、M03 修订交接、M04 三类维护链及 M07 查询取消已完成本地机械验收。真实模型、Desktop G2、独立冷启动、物理休眠与 PR / CI 仍未完成，详见[总 Plan](plan.md)与[待办](pending.md)。
 
 关联 [Issue #4](https://github.com/Spokey5243/DistillAI/issues/4)，分支 `codex/4-initial-development`，采用 Exploratory 流程。
 
