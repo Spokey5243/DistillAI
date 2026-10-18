@@ -1044,3 +1044,7 @@ MCP 复用后台时直接采用启动模块已有 INSTANCE_RECORD / INSTANCE_HEA
 ### 2026-10-18：M06 搜索交付与发布边界验收（Agent 闭环）
 
 固定 PM 的真实任务首帧验证搜索私有 key / 固定启动环境优先级、清除 / 脱敏与版本冻结；上游 Tavily 结合 HTTPX MockTransport 验证错误、固定 endpoint、响应尺寸和 keyless / keyed headers。实际 keyless 主要来源及 AIAgent 外扩 → M04 → M07 链复跑通过；逐项引用归属、未核查缺口、第 16 次可发布 / 第 17 次拒发且不交下游取得新证据，M06-R1.4 / R2.2 完成。模型响应仍为合成，语义及在途停机恢复不因此通过。未改生产行为、字段、格式或依赖，material_revision 仍为 3，详见总 Plan 第十七批。
+
+### 2026-10-18：采集失败窗口补验（Agent 闭环）
+
+正式 Hook 子进程接收合成 payload，实际验证后台不可用 / 不回应、写锁竞争、残缺 UTF-8 尾条和写队列后 cursor 前被终止。正文仍可补登记；工具可丢；原物理来源保持；cursor 未保存可在新位置重采，不承诺恰好一次。stdout={} / exit 0 与诊断脱敏通过，SessionStart / UserPromptSubmit 不另造正文。真实 Desktop G2 仍待实际触发事实，未改变事件适配、协议、字段或用户流程，material_revision 仍为 3，详见总 Plan 第十八批。

@@ -461,6 +461,18 @@ M07 查询记录区分直接结果 / 后台任务 / 提前取消，反馈区分 
 
 M06-R1.4 / R2.2 据新证据勾选；R2.1 保留在途停机恢复策略待决，R2.3 保留实际模型定性审阅。全范围 Ruff、离线依赖锁、32 份文档 / 479 个本地链接和 git diff 检查通过，本批探针 / 任务子进程已退出。同步统一 Design、M06 Plan、Spec 入口与 pending；设计 / 公开流程不变，material_revision 仍为 3，无需改用户启动 README 或重跑浏览器 / 完整产品组。后续逐项核对其余批准 Plan 的独立本地部分；Desktop、普通终端独立后台、物理休眠、实际私有模型配置 / 语义与当前 SHA 的 PR / CI 仍待相应条件，Goal 不标整体完成。
 
+## 2026-10-18 第十八批：M02 失败恢复的实际进程补验
+
+Goal 本次重新查询为 active，保留原目标与完整批准范围，未将恢复等同完成。在 76ee18b06d0f24cb851cece0ffd2f8644ddb0cbc 干净分支重新审核全部剩余步骤，发现 M02-R2.3 可独立补验正式 Hook 入口的组合失败窗口；此前只按 Desktop 条件归类过宽。按 test-necessity-review 复用既有测试与忽略目录的一次性探针，不改变生产代码、依赖、数据格式或测试工程。
+
+实际产品解释器启动 plugins/distillai/hooks/dispatch.py，五类窗口通过（eighteenth-capture-failures.log / .json）：无后台实例时正文 / cursor 保存，新 Store / Runtime 两次发现扫描只补一项 episode，固定来源行 1–2；通知接收端保持不回应，Hook 仍退出，实际请求只含 connector / session_key。两次 Hook 总耗时 0.302 / 0.299 秒，包含进程初始化，不声称这是 socket 200ms 截止的精确计时。正常结束的每次 Hook 调用均 stdout={} / exit 0，不冷启动后台。
+
+真实 FileHandle 写竞争下 Stop / PostToolUse 不改队列和 cursor；解锁后正文补采，丢失工具摘要不伪造补回。队列残缺 UTF-8 尾部在 PreCompact 采集时安全截除再补正文，原前两行字节 / 物理来源不改。实际探针子进程在队列已写、cursor 保存前被确定暂停，再终止并补采：保留原来源，在新位置允许重复，最终 cursor count=2；未把该窗口误写成恰好一次或跨位置去重。被终止进程由本探针创建，仅停止该 PID。
+
+SessionStart / UserPromptSubmit 的合成调用不生成正文队列；缺失 transcript 产生压缩诊断，包含 FileNotFoundError、不含合成正文 canary 或原路径。既有产品采集 **11 tests / OK，2.295s**、来源 **7 tests / OK，0.669s**、旧采集验证 **PASS**（eighteenth-capture-tests.log、eighteenth-source-tests.log、eighteenth-legacy-capture.log）。没有模型调用、真实个人材料或 Desktop 插件启用操作。
+
+同步 M02 Plan、Design 和 pending：R2.3 的本地失败恢复窗口已补齐，真实 Desktop 触发 / 字段 / 顺序仍待 G2，checkbox 保持未完成。全范围 Ruff、离线锁、32 份文档 / 480 个本地链接与 git diff 检查通过，本批探针进程已退出。其余开放步骤仍需已列出的 M06 恢复选择、普通终端独立启动、Desktop、物理休眠、实际模型配置 / 语义和当前 SHA 的远端验收条件；不重复此前已完成的局部验收。设计 / 用户流程不变，material_revision 仍为 3，无需更新用户启动 README 或重跑完整产品 / 浏览器组。Goal 保持原目标，不标整体完成。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

@@ -66,6 +66,14 @@ QueueLocator / QueueRef 共用严格会话定义，通知请求复用同一结�
 
 采集 cursor 读取用 Pydantic strict / extra=forbid 替代手写字段 / 类型集合，原 UTC、总行数与失败从头补读继续业务判断；沿旧永久组验证源字节保留、失败 / 锁竞争及有界通知。notify 仅使用所需 URL / token 并已有 loopback / 凭证 / Header 校验，共享 200ms 截止和不等响应契约保持；不导入 startup 的后台框架。一次性 bool / 负数 / 未知字段 cursor 检查通过，不新增重复测试，详见[总 Plan](../../plan.md)第十三批。G2 不因此完成。
 
+## 2026-10-18 第十八批：实际 Hook 子进程的失败窗口
+
+R2.3 的本地组合验证通过：没有后台实例时执行正式 dispatch.py，队列 / cursor 保存后用新 Store / Runtime 扫描两次只补登记一项 episode，来源为原物理行 1–2。服务收下通知但保持不回应时，Hook 已退出，通知仅 connector / session_key，不含正文；两次 Hook 总耗时分别 0.302 / 0.299 秒，包含解释器 / 导入，不冒充 socket 200ms 精确测量。
+
+真实 Windows 写句柄竞争时 Stop / PostToolUse 都保持原队列 / cursor；解除后 Stop 补正文，工具摘要可能丢。残缺 UTF-8 尾条修复不改前两行 / 原来源，新增正文只追加。另在实际子进程中暂停于队列写完、cursor 尚未保存的窗口，确认后终止该探针进程：重采保留原两行并在新位置追加重复，cursor 最后为 2，符合允许重采而非跨位置去重的契约。SessionStart / UserPromptSubmit 不创建正文队列；缺失 transcript 诊断只含错误种类，不含合成正文或源路径。
+
+现有采集 11 tests / OK、来源 7 tests / OK、旧采集验证 PASS；未改生产逻辑或新增重复永久测试。详细证据见[总 Plan](../../plan.md)第十八批。上述为实际 Hook 进程接收合成 payload，R2.3 的真实 Desktop 触发 / 字段 / 事件顺序仍由 G2 复验，因此不勾选该项；后续不重复本地失败窗口。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）
