@@ -1,15 +1,52 @@
 """MCP calls keep errors distinct and cancellation scoped to their invocation."""
 import asyncio
 from contextlib import asynccontextmanager
+import json
+from pathlib import Path
+import tempfile
 import unittest
+from unittest.mock import patch
 
+import httpx
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
-from distillai.mcp import Bridge, QueryError, create_server
+from distillai.mcp import Bridge, QueryError, create_server, local_request
 
 
 class MCPTests(unittest.IsolatedAsyncioTestCase):
+    async def test_invalid_backend_identity_is_not_reused_and_original_metadata_is_preserved(self):
+        saved = {"instance_id": "a" * 32, "pid": 1234, "protocol": 1,
+            "url": "http://127.0.0.1:1234", "token": "synthetic-only"}
+        health = {name: saved[name] for name in ("instance_id", "pid", "protocol")} | {"ready": True}
+        original_client = httpx.AsyncClient
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "instance.json"
+            for boundary, changed in (("instance", {"protocol": True}), ("instance", {"ready": "false"}),
+                    ("instance", {"extra": "ignored"}), ("health", {"protocol": True}),
+                    ("health", {"ready": "false"}), ("health", {"extra": "ignored"}), ("valid", {})):
+                metadata = {**saved, **changed} if boundary == "instance" else saved
+                response = {**health, **changed} if boundary == "health" else health
+                path.write_text(json.dumps(metadata), encoding="utf-8")
+                before, calls = path.read_bytes(), []
+                def backend(request):
+                    calls.append(request.url.path)
+                    return httpx.Response(200, json=response if request.url.path == "/v1/health" else {"accepted": True})
+                with self.subTest(boundary=boundary, changed=changed), patch("distillai.mcp.httpx.AsyncClient",
+                        side_effect=lambda **options: original_client(transport=httpx.MockTransport(backend), **options)), \
+                        patch("distillai.startup.start_product", side_effect=RuntimeError("synthetic startup unavailable")) as launch:
+                    async with local_request(temporary) as request:
+                        if boundary == "valid":
+                            self.assertEqual(await request("/v1/config"), {"accepted": True})
+                            launch.assert_not_called()
+                        else:
+                            with self.assertRaisesRegex(QueryError, "backend_not_started"):
+                                await request("/v1/config")
+                            launch.assert_called_once_with(temporary)
+                    self.assertEqual(calls, ["/v1/health", "/v1/config"] if boundary == "valid" else
+                        ["/v1/health"] if boundary == "health" else [])
+                self.assertEqual(path.read_bytes(), before)
+
     async def test_fastmcp_client_preserves_tools_strict_inputs_and_structured_results(self):
         calls = []
         async def request(path, **kwargs):

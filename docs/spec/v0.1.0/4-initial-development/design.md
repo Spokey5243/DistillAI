@@ -1034,3 +1034,9 @@ Runtime 登记 / 增量、历史来源参数和归属纠错复用已有模型，
 ### 2026-10-18：Web 完整交互与修订交接验收（Agent 闭环）
 
 当前 ASGI / SQLite 的历史版本、关联外扩 / 上下文两列表 / 已选素材、正文 / 认知冲突、归属纠错、失败保留和最新依据重分析取得实际 Chromium 证据，M08 全部步骤完成。PM 实际 AIAgent 的归属 / 新材料修订与空 M04 → M05 交接复跑通过，M03-R2.3 / M04-R2.2 完成；生成响应仍为合成 provider。七组原语义材料来源 / 字节 / Prompt 有效，本次实际模型配置尚待提供。设计与公开行为不变，material_revision 仍为 3；详细证据和未验范围见总 Plan 第十五批，不把模块 UI 完成当真实模型、Desktop 或整体完成。
+
+### 2026-10-18：MCP 实例校验与调度验收（Agent 闭环）
+
+MCP 复用后台时直接采用启动模块已有 INSTANCE_RECORD / INSTANCE_HEALTH，严格拒绝布尔 protocol、非布尔 ready 与未知字段，再比较实例身份；无新增 schema / 字段或协议。实际 stdio → AIAgent 的查询只读、固定版本读取审计、普通名额排队与单调用取消完成本地验收。测试预启动后台存活不代替独立冷启动 / Desktop；生成 provider 仍合成。详见总 Plan 第十六批。
+
+实际外扩周期重排、批次公平性与空闲重启已取得证据；在途停机则暴露 cancelled / runtime_stopping 的 pending 不能继续、显式 retry 又拒绝取消任务的问题。该恢复策略尚待用户决定，保留原输入 / 次数 / pending，不在本次自行改动取消终态或重试规则；具体问题与独立可继续工作见 pending。这里只记录实施事实与未决项，material_revision 仍为 3，M06-R2.1 不提前完成。

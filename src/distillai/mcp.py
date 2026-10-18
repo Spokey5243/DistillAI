@@ -59,7 +59,7 @@ class Bridge:
 
 @asynccontextmanager
 async def local_request(home):
-    from .startup import instance_url, start_product
+    from .startup import INSTANCE_HEALTH, INSTANCE_RECORD, instance_url, start_product
     instance = None
     lock = anyio.Lock()
     async with httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=3) as client:
@@ -82,9 +82,9 @@ async def local_request(home):
                 async with lock:
                     if instance is None:
                         try:
-                            saved = json.loads(await anyio.Path(Path(home) / "instance.json").read_text(encoding="utf-8"))
-                            health = await call(saved, "/v1/health", "GET", None)
-                            if saved["protocol"] != 1 or not health["ready"] or any(health[field] != saved[field] for field in ("instance_id", "pid", "protocol")):
+                            saved = INSTANCE_RECORD.validate_json(await anyio.Path(Path(home) / "instance.json").read_bytes())
+                            health = INSTANCE_HEALTH.validate_python(await call(saved, "/v1/health", "GET", None))
+                            if not health["ready"] or any(health[field] != saved[field] for field in ("instance_id", "pid", "protocol")):
                                 raise ValueError("Backend identity is not ready")
                             instance = saved
                         except (OSError, ValueError, KeyError, httpx.HTTPError, QueryError):

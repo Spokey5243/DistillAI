@@ -429,6 +429,22 @@ M07 查询记录区分直接结果 / 后台任务 / 提前取消，反馈区分 
 
 全范围 Ruff、离线锁、32 份文档 / 473 个本地链接及 git diff 检查通过。本轮仅保存验收证据 / 文档及状态，没有新增永久测试或改生产逻辑。同步 Design、M03 / M04 / M05 / M08、版本 / Spec 入口、README 与待办，material_revision 仍为 3。下一轮审计 M06-R2.1 周期 / 重启公平性和 M07-R1.3 查询 / 独立取消的剩余本地机械证据；Desktop G2、普通终端独立冷启动、物理休眠、真实模型和远端授权仍单列。全部本批 fixture / 浏览器 / PM / 测试进程已退出，无真实数据迁移或远端写入，Goal 不标整体完成。
 
+## 2026-10-18 第十六批：查询取消验收、实例校验与外扩停机待决
+
+在 59aead4bbdd13389c0994060cc9cc84f9f2a0883 的干净任务分支续接 M07-R1.3 / M06-R2.1，核对规则、批准记录、工作区和 Goal；固定 Hermes / PM 环境保持。MCP local_request 的手写实例身份判断漏用已有严格模型，bool protocol、字符串 ready 与未知字段可能通过。直接复用启动模块 INSTANCE_RECORD / INSTANCE_HEALTH，非法元信息不发健康请求、非法健康响应不发业务请求；原文件字节不改，有效实例继续复用。只改该共用入口，不新增 schema / 依赖或重写启动流程。
+
+新增永久 MCP 边界契约先复现 **5 tests / failures=6**，修复后 **5 tests / OK，0.598s**（sixteenth-mcp-red.log / sixteenth-mcp-green.log）；六种非法输入与正常复用均有 HTTP 请求 / 文件字节断言。最终完整产品 **230 tests / OK，97.416s**（sixteenth-product-final.log）。
+
+实际 FastMCP PythonStdioTransport → HTTP 后台 → PM AIAgent 的准备 / 查询探针通过（sixteenth-context-stdio-final.log / sixteenth-context-stdio.json）。准备 4 次、查询 3 / 1 / 3 次，共 **11 次 localhost 合成生成**；ID / 名称直接查询 0 次，无匹配与索引失败明确区分，严格参数拒绝。普通维护占名额时两个同内容查询以独立 UUID 排队，取消一个不影响维护或另一份；运行中取消后真实 ProcessJob handle 关闭，再释放名额并完成剩余查询。SDK timeout 返回 MCPError，其排队任务取消且生成 0 次。
+
+所有查询 manifest 仅 query_records / read_source，scope / commit 均空；实际 AF_PIPE 记录 / 来源读取审计与返回已读版本通过，查询预算合计 7 与实际到达匹配，知识 / episode 字节保持，活动任务 / Job 清空。stdio 退出后测试预启动服务存活；这不证明独立冷启动或 Desktop G2。取消时合成 provider 观察到预期连接重置，探针断言及退出码通过。M07-R1.3 据此勾选，R1.4 的 Desktop 条件仍未满足。
+
+实际 APScheduler / service_lifespan / SQLite 外扩探针通过默认周期 3600 秒 → 配置 1 秒的下一次等待重排、初批 10 → 后批 1 且不清覆盖；失败经两个调度事件不重跑，显式 retry 留原输入 / 已用 1 次许可。空闲重启恢复持久已到期项，覆盖 12 → 13，旧任务输入 / 次数保持，无变化再经两个调度事件不重复（sixteenth-expansion-scheduler-final.log，报告为 sixteenth-expansion-scheduler.json）。执行回调合成，真实模型请求 0。
+
+初次调度探针在关闭时混入新到期任务而失败；用公开 scheduler.pause 分离空闲重启后，独立探针确认在途停机的真实缺口：任务 cancelled / runtime_stopping，保留已用 1 次；重启 tick 仍返回该 pending，retry 拒绝 cancelled，无新任务或覆盖推进（sixteenth-expansion-active-stop-final.log，报告为 sixteenth-expansion-active-stop.json）。最早独立探针另曾因错误使用两个 Store 对象嵌套锁而失败，改单 Store 后才取得上述产品证据。恢复策略写入 pending，未擅自清理、重建或放开取消重试，M06-R2.1 保持未完成。
+
+本批同步 Design、M01 / M06 / M07 Plan 和待办；material_revision 仍为 3。全范围 Ruff、离线锁、32 份文档 / 477 个本地链接与 git diff 检查通过；本批探针和任务子进程均已退出。README 启动 / 用户流程、配置及前端均未变化，无需改 README 或重跑浏览器验收。后续可独立推进 M06-R1.4 搜索凭证优先级 / 错误与 R2.2 主张 / 预算发布边界；已完成的查询和空闲调度证据不重复实施。普通终端独立后台、Desktop、物理休眠、实际模型语义与远端授权仍单列，Goal 不标整体完成。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

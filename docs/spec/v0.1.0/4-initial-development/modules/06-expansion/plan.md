@@ -62,6 +62,12 @@ uv run --locked python -m unittest discover -s tests -p 'test_product_expansion.
 
 覆盖状态读取采用严格模型，复用 Identifier / Version，时间值拒绝 bool / 非有限数，保留可空时间 / 任务和既有 cursor。坏记录不推进等待或改写覆盖文件，不登记额外任务；原周期 / 公平 / 成功才覆盖规则继续通过。实际 Tavily keyless → M04 → M07 / 用户编辑合成链 14 次生成通过，详见[总 Plan](../../plan.md)第十二批，不充当真实模型语义验收。
 
+## 2026-10-18 第十六批：实际调度与在途停机待决
+
+实际 AsyncIOScheduler / service_lifespan / SQLite 合成探针验证默认 3600 秒、配置改为 1 秒后下一次等待重排；初批 10 个、随后配置批次 1 个不清已有覆盖。失败后两个实际调度事件不重复创建或推进覆盖；显式 retry 保留原输入与已用 1 次许可后完成。空闲关闭并重开 Store / Config / Runtime，持久已到期项继续，从覆盖 12 到 13；旧任务输入 / 次数保持，无变化再经两个实际事件不重复探索。使用合成执行回调，真实模型请求 0，不作模型语义证据。
+
+另单独复现：周期任务在途停止后为 cancelled / runtime_stopping，已用次数保留；重启 tick 仍指向该终态 pending，retry 又拒绝 cancelled，因此该周期待办无法继续。初版调度探针曾混入此在途场景而失败，后用公开 scheduler.pause 隔离空闲重启，并独立复现问题。恢复策略需要用户决定，具体问题、影响与可继续工作见[待办](../../pending.md)。不擅自清 pending、重建任务或放开取消重试，R2.1 保持未完成；R1.4 / R2.2 仍可独立续接。完整产品 230 tests / OK，详细证据见[总 Plan](../../plan.md)第十六批。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

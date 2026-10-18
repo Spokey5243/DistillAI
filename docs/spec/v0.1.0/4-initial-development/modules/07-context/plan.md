@@ -21,7 +21,7 @@ decision_mode: user-approved
 - [x] **R1.1 用 FastMCP 的高层工具。** `from fastmcp import FastMCP`，以 `@server.tool` 和现有 Pydantic 参数 / 返回类型登记 query_context / submit_feedback，严格输入校验、schema、结构化结果、标准工具错误和 stdio 会话由库承担，不另写 JSON-RPC / tool schema 管理器。只暴露这两个工具，不用 from_fastapi 自动公开整个管理 API；继续 stdio，不为换库增加 MCP HTTP 服务。底层 mcp.server.MCPServer 生产入口替换后删除，不双轨维护。
 - [x] **R1.1a 复用依赖与异步生命周期。** 用 FastMCP 原有 lifespan / dependencies 管理 HTTPX AsyncClient，连接同一常驻后台，删除同步请求套 asyncio.to_thread；取消清理使用库的取消上下文和 AnyIO shield，只向同 invocation 发 cancel。MCP stdout 只协议，Loguru 诊断到文件 / stderr；产品项目解释器启动，不往 PM 装 FastMCP。框架取消工具不代表父进程里的业务任务已停，仍等 Runtime / Job 确认。
 - [ ] **R1.2 闭合冷启动。** 与 M01 共用已有启动锁 / 实例身份检查，在真实 Desktop SessionStart / MCP 生命周期中测试后台不存在时的启动和等待。Windows breakaway 被限制时保留明确错误和先 Serve 的事实；不增加系统服务 / 计划任务 / 父进程伪装。真实冷启动和 stdio 退出后后台存活都取得证据才完成此项。
-- [ ] **R1.3 查询和取消复用业务契约。** 明确 ID / 名称复用 M04，不调用模型；自然语言沿现有只读 AIAgent，先子图 / 两列表后全图。实际读取审计经 M01 通道调用原函数，结果只能引用已读固定版本；不开 Shell / 编辑 / 外部搜索。普通名额排队，不抢占运行维护；每次工具调用内部 UUID 绑定唯一取消，只停对应任务树，停完才回收名额。SDK 取消 / 平台超时 / 无匹配分别返回。
+- [x] **R1.3 查询和取消复用业务契约。** 明确 ID / 名称复用 M04，不调用模型；自然语言沿现有只读 AIAgent，先子图 / 两列表后全图。实际读取审计经 M01 通道调用原函数，结果只能引用已读固定版本；不开 Shell / 编辑 / 外部搜索。普通名额排队，不抢占运行维护；每次工具调用内部 UUID 绑定唯一取消，只停对应任务树，停完才回收名额。SDK 取消 / 平台超时 / 无匹配分别返回。
 - [ ] **R1.4 用 FastMCP Client 测试。** 复用 `async with fastmcp.Client(server)` 的内存连接，list_tools / call_tool 验两工具 schema、严格参数、返回字段、错误、反馈幂等和取消绑定；不自写 session / stdio 收发 fixture。传输组另用 FastMCP 的 PythonStdioTransport 与实际子进程测连接 / 退出 / 取消，记录与 Codex Desktop 的实际工具全名和行为。底层官方 SDK 客户端只保留必要互操作检查，内存测试不能代替真实 stdio / G2。
 
 ## M07-R2：准备、筛选与 compact
@@ -87,6 +87,14 @@ stdio 进程配置独占 Loguru sink，取消未确认诊断直接 bind invocati
 ## 2026-10-18 第十二批：调用、反馈和请求边界
 
 查询调用 / 提前取消、待关联 / 已登记反馈和请求边界接入严格模型，复用 QueryArgs / FeedbackArgs / 来源引用。状态、重入和取消共用读取入口，核对关联任务种类、调用 / 反馈 ID 与固定请求；反馈记录同时核对 client_request_id hash 与文件名。先复现错指另一任务会取消错调用 / 报错请求状态，及坏边界 / 未知反馈字段仍推进关联，再补回归修复，坏字节与其他任务保持。完整产品 224 项、浏览器 5 项、真实 FastMCP PythonStdioTransport 两工具 / 幂等通过；预启动服务归测试管理，不能作为独立冷启动或 Desktop G2 证据。见[总 Plan](../../plan.md)第十二批，原外部验收 checkbox 保持未勾。
+
+## 2026-10-18 第十六批：实际只读查询、取消与实例身份
+
+FastMCP PythonStdioTransport → 当前 HTTP 后台 → 固定 PM AIAgent 实际执行通过：准备 4 次生成，查询 3 / 1 / 3 次，共 11 次 localhost 合成请求。ID / 名称查询不生成，无匹配与索引未就绪分别返回；普通维护占位时两份相同查询用独立 UUID 排队，取消一份不影响维护和另一份。运行中取消等待实际 Job 关闭后才回收名额，另一查询继续完成；SDK 超时返回 MCPError，对应排队任务取消且生成 0 次。
+
+全部查询工具只含 query_records / read_source，无发布 scope / commit；实际读取记录 / 来源经 AF_PIPE 审计，返回固定已读版本，知识 / episode 原字节保持，预算总数 7 与查询请求一致。stdio 退出后测试预启动的后台仍存活，不能替代独立冷启动或 Desktop G2。R1.3 据此完成；R1.4 仅剩实际 Desktop 工具全名 / 行为条件，原内存和 stdio 证据不重复实施。
+
+同时发现 local_request 复用实例时漏用启动模块的严格模型，bool protocol、字符串 ready 或未知字段可能通过手写比较。现直接复用 INSTANCE_RECORD / INSTANCE_HEALTH，非法元信息在健康请求前、非法健康响应在业务请求前拒绝，原字节不覆盖；正常实例继续复用。新增一项永久契约，先失败 6 个子场景后 5 tests / OK；最终完整产品 230 tests / OK。公开工具与协议不变，证据见[总 Plan](../../plan.md)第十六批。
 
 <a id="historical-execution"></a>
 
