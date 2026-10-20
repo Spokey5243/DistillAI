@@ -129,6 +129,27 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(runtime.task(task["id"])["status"], "cancelled")
         self.assertEqual(started, [])
 
+    def test_retry_does_not_resume_other_cancelled_tasks(self):
+        runtime = self.runtime(lambda task, control: {})
+        for kind, trigger, reason in (("knowledge", "periodic_coverage", "runtime_stopping"),
+                ("expansion", "user_requested", "runtime_stopping"),
+                ("expansion", "periodic_coverage", "user"),
+                ("expansion", "periodic_coverage", "workspace_permission_revoked")):
+            task = runtime.register(kind, {"reason": reason}, trigger)
+            stopped = runtime.cancel(task["id"], reason)
+            with self.subTest(kind=kind, trigger=trigger, reason=reason), self.assertRaises(ConflictError):
+                runtime.retry(task["id"])
+            self.assertEqual(runtime.task(task["id"]), stopped)
+
+    def test_stopped_periodic_retry_rechecks_current_workspace_permission(self):
+        runtime = self.runtime(lambda task, control: {})
+        task = runtime.register("expansion", {}, "periodic_coverage", scope={"root": str(self.workspace)})
+        stopped = runtime.cancel(task["id"], "runtime_stopping")
+        runtime.update_config(self.config.read()["version"], {"workspace": {"paths": []}})
+        with self.assertRaises(CancelledError):
+            runtime.retry(task["id"])
+        self.assertEqual(runtime.task(task["id"]), stopped)
+
     def test_revoking_workspace_cancels_before_publication_and_keeps_slot_until_stop(self):
         began, release = threading.Event(), threading.Event()
         self.addCleanup(release.set)

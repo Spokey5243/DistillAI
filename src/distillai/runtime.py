@@ -507,12 +507,17 @@ class Runtime:
     def retry(self, task_id):
         with self.store.locked():
             task = self.task(task_id)
-            if task["status"] != "failed" or task_id in self._active:
-                raise ConflictError("Only a stopped failed task may retry; completed tasks require a new trigger")
+            stopped_periodic = (task["status"] == "cancelled" and task["kind"] == "expansion"
+                and task["trigger"] == "periodic_coverage" and task["cancel_reason"] == "runtime_stopping")
+            if task["status"] != "failed" and not stopped_periodic or task_id in self._active:
+                raise ConflictError("Only a stopped failed task or shutdown-cancelled periodic exploration may retry")
+            if stopped_periodic:
+                task["authorized"] = True
             self._authorize_scope(task)
             self._check_input(task)
             task["status"] = "queued"
             task["error"] = None
+            task["cancel_reason"] = None
             self._save(task)
         self.wake()
 

@@ -2,6 +2,8 @@
 import json
 from pathlib import Path
 import tempfile
+import threading
+import time
 import unittest
 from unittest.mock import patch
 
@@ -198,6 +200,60 @@ class ExpansionTests(unittest.TestCase):
         self.assertEqual(expansion.status(self.runtime)["completed"], {})
         self.assertEqual(expansion.tick(self.runtime, now=7200)["id"], first["id"])
         self.assertEqual(len(self.runtime.tasks()), 1)
+
+    def test_stopped_periodic_task_resumes_explicitly_with_original_input_and_budget(self):
+        entered = threading.Event()
+        def active(task, inputs):
+            self.runtime.reserve_generation(task["id"])
+            entered.set()
+            while not self.runtime.task(task["id"])["cancel_reason"]:
+                time.sleep(.01)
+            raise CancelledError("stop acknowledged")
+        self.action = active
+        expansion.tick(self.runtime, now=0)
+        task = expansion.tick(self.runtime, now=3600)
+        self.runtime.dispatch()
+        self.assertTrue(entered.wait(5))
+        self.runtime.close()
+        stopped = self.runtime.task(task["id"])
+        self.assertEqual(stopped["status"], "cancelled")
+        self.assertEqual(stopped["cancel_reason"], "runtime_stopping")
+        self.assertEqual(stopped["model_calls"], 1)
+        self.store = Store(self.store.home)
+        self.runtime = Runtime(self.store, Config(self.store), self.execute,
+            lambda task, result: expansion.validate_task(self.runtime, task, result),
+            prepare_result=lambda task, result: expansion.prepare_result(self.runtime, task, result),
+            after_commit=lambda task: expansion.after_commit(self.runtime, task))
+        self.addCleanup(self.runtime.close)
+        self.runtime.expansion_ready = True
+        self.assertEqual(expansion.tick(self.runtime, now=7200), stopped)
+        self.assertEqual(len(self.runtime.tasks()), 1)
+        self.runtime.retry(task["id"])
+        resumed = self.runtime.task(task["id"])
+        for field in ("inputs", "input_version", "execution_input_version", "config", "prompt_version", "model_calls", "generation_attempts"):
+            self.assertEqual(resumed[field], stopped[field], field)
+        self.assertTrue(resumed["authorized"])
+        self.assertIsNone(resumed["cancel_reason"])
+        def complete(task, inputs):
+            self.runtime.reserve_generation(task["id"])
+            return {"expansion_refs": [], "reason": "completed after explicit resumption"}
+        self.action = complete
+        done = self.run_task(resumed)
+        self.assertEqual(done["model_calls"], 2)
+        self.assertEqual(expansion.status(self.runtime)["completed"], task["inputs"]["basis"])
+        self.assertIsNone(expansion.status(self.runtime)["pending_task_id"])
+
+    def test_stopped_periodic_retry_rechecks_input_without_changing_stopped_task(self):
+        expansion.tick(self.runtime, now=0)
+        task = expansion.tick(self.runtime, now=3600)
+        stopped = self.runtime.cancel(task["id"], "runtime_stopping")
+        path = self.store.home / "knowledge" / (A + ".json")
+        changed = json.loads(path.read_text(encoding="utf-8"))
+        changed["content"]["summary"] = "updated while stopped"
+        atomic_json(path, changed)
+        with self.assertRaises(CancelledError):
+            self.runtime.retry(task["id"])
+        self.assertEqual(self.runtime.task(task["id"]), stopped)
 
     def test_fetch_preserves_actual_source_but_search_snippet_cannot_support_claim(self):
         def action(task, inputs):

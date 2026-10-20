@@ -4,7 +4,20 @@
 
 用户已批准重写总 Plan 与 M01–M08，授权完成既有代码重构和计划内新功能；统一 Design 修订 3 已同步，G0 通过。已建立当前聊天 Goal，并启用每半小时的已批准 Plan 续接检查。需要用户决策 / 外部条件的事项在此集中记录，其余依赖满足的工作持续实施；下方“先重写 Plan”与旧进度仅保留为历史。远端写入仍需对应明确授权。
 
-## 2026-10-18 当前状态
+## 2026-10-20 新授权与当前待办
+
+用户本次明确批准 M06 推荐恢复方案、真实 Desktop 合成实测和普通 PowerShell 独立后台验收；物理 Windows 休眠测试仅允许北京时间每天 02:00–08:00，恢复与清理应在窗口内完成。明确授权本任务分支 Push 与创建 PR，发布 Review、Merge、Tag / Release 仍需各自授权。现有半小时 heartbeat 已更新这些条件，不再以“缺少这些批准”阻塞。本轮 Goal 查询为 paused；Agent 未自行恢复 / 新建 Goal，继续当前用户明确授权的可实施工作。
+
+- [x] M06 已按获准方案完成原任务显式续接，M06-R2.1 完成，统一 Design 修订 4；完整产品 234 项与 Chromium 5 项通过，详见总 Plan 第十九批。
+- [ ] 模型配置：普通 PowerShell 运行 `& 'E:\JourneyIntoAI\DL_and_LLM\projects\DistillAI\.artifacts\open-acceptance-web.ps1'`，在本地 Web 的“配置 → 模型服务”填写 API 地址、模型名与密钥，参数暂留 `{}`，保存后告知。验收根为 `C:\Users\11954\.distillAI-acceptance`。私有版本由程序写入 `config/<version>.json` 并由 SQLite 选定，不能手工编辑版本文件；不把 key 发到聊天。该命令 Check 已通过，尚无后台实例。
+- [ ] 普通终端独立后台：已获准；上一步从普通 PowerShell 启动 Web 会启动后台。随后关闭发起终端，由 Agent Check 同一实例，再做 MCP 退出 / Check / Stop。当前工具仍属于 Codex / MCP Job 树，不能靠授权把本执行器冒充独立父进程；不放宽 Job、不建系统服务 / 计划任务。
+- [ ] Desktop G2：已获准；本机工具没有原生 Desktop 控制，仍需用户在真实界面安装 / 信任 Personal marketplace 的 DistillAI G2 Probe，并在独立合成聊天触发 compact / 停止 / 归档。具体操作已准备于忽略目录 `.artifacts/initial-development/G2-desktop.md`，插件 C:\Users\11954\plugins\distillai-g2-probe。取得真实事件后由 Agent 继续 M03 / M07 适配，不能把安装批准当触发证据。
+- [ ] 物理休眠：已获准且无需再询问；半小时检查仅在北京时间 02:00–08:00 内准备就绪时触发一次验收，窗口外只准备。本轮北京时间 09:43 未执行。已验证的进程 / 事件循环暂停不充当休眠证据。
+- [ ] 远端验收：Push 与创建 PR 已获准，Agent 在本地验证和文档同步后执行，绑定当前 SHA / origin / 实际默认分支；若落后须按仓库规则另行确认。PR 保持草稿直到真实模型 / Desktop 等验收齐备，CI 结果据实际 run 记录。
+
+下方未决选择、缺少远端授权及 blocked 记录仅描述 2026-10-18 当时状态，由本节新授权及执行记录取代。剩余实际模型 / Desktop / 独立后台 / 物理休眠的执行证据仍不齐，不标整体完成。
+
+## 2026-10-18 状态（历史）
 
 第十八批补齐 M02-R2.3 的本地失败窗口：实际 Hook 子进程、后台缺失 / 不回应、写锁、残缺尾条、写队列后 cursor 前被终止，以及后续正文补登记均通过；18 项采集 / 来源测试和旧采集验证通过。真实 Desktop 触发 / 字段 / 顺序仍待 G2，R2.3 不勾选，后续不重复本地组合验证。详见总 Plan 第十八批。
 
@@ -72,7 +85,7 @@ Goal 查询返回 usageLimited，尚未完成；该状态只能由用户 / 系�
 
 ## 用户有空时处理
 
-- [ ] **M06：在途后台停止后的周期待办如何恢复。** 实际复现周期任务在后台停止时变为 cancelled / runtime_stopping，原输入和已用次数保留；重启 tick 仍指向它，显式 retry 只接受 failed，因此原周期 pending 无法继续。建议允许仅对此停止原因按原 task_id 显式续接，保留固定输入 / 已用次数并重新核对权限；另一选择是保持取消终态，明确结束原周期待办后要求独立重探请求。请确定采用哪种恢复语义，或给出替代规则。影响 M06-R2.1 的在途重启验收；Agent 未清 pending、重建任务或放开 cancelled 重试。M06-R1.4 搜索配置 / 错误与 R2.2 主张 / 预算 / 下游已于第十七批独立完成；其余模块的独立本地工作仍可继续。证据见总 Plan 第十六批与 sixteenth-expansion-active-stop.json。
+- [x] **M06：在途后台停止后的周期待办如何恢复（2026-10-20 已批准并完成；下文保留原问题）。** 实际复现周期任务在后台停止时变为 cancelled / runtime_stopping，原输入和已用次数保留；重启 tick 仍指向它，显式 retry 只接受 failed，因此原周期 pending 无法继续。建议允许仅对此停止原因按原 task_id 显式续接，保留固定输入 / 已用次数并重新核对权限；另一选择是保持取消终态，明确结束原周期待办后要求独立重探请求。请确定采用哪种恢复语义，或给出替代规则。影响 M06-R2.1 的在途重启验收；Agent 未清 pending、重建任务或放开 cancelled 重试。M06-R1.4 搜索配置 / 错误与 R2.2 主张 / 预算 / 下游已于第十七批独立完成；其余模块的独立本地工作仍可继续。证据见总 Plan 第十六批与 sixteenth-expansion-active-stop.json。
 - [ ] **普通 Windows 终端的独立后台正向验收。** 当前 Codex / MCP / 测试执行器中的 Job 无法作为独立常驻成功证据，已补真实嵌套 Job 拒绝。需在其进程树之外的普通 PowerShell，按 [README 启动说明](../../../../README.md#后台基础验证)对独立合成数据根运行 Check → Serve → Check，关闭发起终端后再 Check / MCP 连接与退出，核对同一 instance_id / pid 最后 Stop；只需公开实例结果，不提供 token / key。影响 M01-R3.4 与 M07-R1.2，真实 Desktop 还需 G2；不要求放宽 Job、增加服务或更换父进程。M06 搜索 / 发布与 M07 查询的独立本地验收已完成；其他依赖已满足的本地步骤仍可继续。
 - [ ] **G2：真实 Codex Desktop 事件。** 一次性合成探针已放入 Personal marketplace 的 AVAILABLE 条目，尚未安装 / 启用；需要在独立测试聊天中取得实际请求、Stop、compact、中断和 SessionEnd 顺序，才能固定 M03 的 30 分钟终止计时及 M07 交付语义。只使用合成材料，探针目录为 `C:\Users\11954\plugins\distillai-g2-probe`。这是 Desktop 实测条件，标准库测试不能替代。见 [M02 执行记录](modules/02-capture/plan.md)及 [M03 Task 1](modules/03-episode/plan.md)。
 - [ ] **真实模型语义验收。** 在本机私有配置中设置模型 endpoint、`deepseek-flash` 和有效密钥，再提供配置位置或通过本地 Web 保存；不要把密钥发到聊天里。 当前还需先完成 M01-R1.6 在新直连实现的一次流式工具往返；其余合成 SDK 边界已补齐。此前 G1 的真实调用已单独完成；后续完整语义质量案例尚未验收。当前扩展探针使用实际 AIAgent、真实 Tavily、合成 localhost 模型响应，证明工具 / 次数 / 引用 / 保存，不证明模型判断质量。
@@ -93,4 +106,4 @@ Goal 查询返回 usageLimited，尚未完成；该状态只能由用户 / 系�
 - **搜索方案已选 Tavily。** 官方免 key Search / Extract 已实测，不需要现在申请 key；可选私有 `search.api_key` 或启动进程 `TAVILY_API_KEY` 用于更高额度。实际限流仍会保留错误。
 - **M06 失败重试 / 重探与输入变化续排已补齐。** 失败任务的显式 retry 保留原任务和次数，用户要求重探用独立请求来源；旧输入取消后按新依据续排，稳定循环游标防止频繁变化的对象挤掉旧节点，失败不记覆盖成功。在途 runtime_stopping 取消的周期待办恢复仍见上方待决项。
 - **OS 写隔离已移出初版。** 不再继续 MXC、受限令牌或 ACL 路线；后续独立 Issue，未创建远端对象。
-- 本地实施不包含 Push、PR 或 Merge；这些操作尚无对应授权。
+- 2026-10-20 已取得本任务分支 Push 与创建 PR 授权；Merge、发布 Review、Tag / Release 尚未授权。

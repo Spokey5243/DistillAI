@@ -5,12 +5,14 @@ branch: codex/4-initial-development
 workflow: exploratory
 status: approved
 decision_mode: user-approved
-material_revision: 3
+material_revision: 4
 ---
 
 # DistillAI 初版统一 Design
 
 ## 工作状态与阅读入口
+
+2026-10-20，用户批准 M06 在途停机恢复推荐方案，当前行为基线升至修订 4：仅 `expansion / periodic_coverage` 因 `runtime_stopping` 取消且执行树已停止时，允许显式重试原任务；重启和周期 tick 不自动续接。沿原 task_id、固定输入、配置、Prompt、生成审计和已用次数，重新核对当前路径权限及输入版本，通过后才清除取消原因、恢复授权并排队。其他取消任务维持终态。Web 处理历史复用既有重试入口，额度规则不变；Plan 影响为 M06-R2.1 收尾及 M01 / M08 的原入口同步。本段为用户批准，历史修订 3 的实施记录保持。
 
 2026-10-17，用户批准重写总 Plan 与 M01–M08，授权完成代码重构和计划内新功能。当前基线为修订 3：Hermes SDK 直连模型，发送前经父进程持久预算确认；任务私有模型 / 搜索配置经认证管道交到当前任务进程内存，不进入 Prompt、任务输入、日志或历史。FastAPI / Uvicorn 承载本机业务 API；SQLite 仅保存运行控制状态，内容文件与原始队列保留。具体复用与迁移边界以已批准总 Plan / M01-R6 为准；OS 写隔离继续延期。需用户决策事项写入 pending.md，其余已批准步骤持续实施；远端写入仍需对应授权。下方 2026-10-16 的草案状态仅保留为历史。
 
@@ -1048,3 +1050,7 @@ MCP 复用后台时直接采用启动模块已有 INSTANCE_RECORD / INSTANCE_HEA
 ### 2026-10-18：采集失败窗口补验（Agent 闭环）
 
 正式 Hook 子进程接收合成 payload，实际验证后台不可用 / 不回应、写锁竞争、残缺 UTF-8 尾条和写队列后 cursor 前被终止。正文仍可补登记；工具可丢；原物理来源保持；cursor 未保存可在新位置重采，不承诺恰好一次。stdout={} / exit 0 与诊断脱敏通过，SessionStart / UserPromptSubmit 不另造正文。真实 Desktop G2 仍待实际触发事实，未改变事件适配、协议、字段或用户流程，material_revision 仍为 3，详见总 Plan 第十八批。
+
+### 2026-10-20：M06 在途停机显式续接（用户批准，修订 4）
+
+用户选择原任务显式恢复，未选择清 pending / 新建周期任务。共用 Runtime.retry 在内存候选上重新核对权限与原输入，失败不改持久取消状态；成功才恢复排队，保留原配置、来源、Prompt、调用记录和预算。处理历史显示同一受限入口，不将普通用户取消或用户要求的独立重探纳入恢复。真实 APScheduler / SQLite 重启探针验证停机保留 1 次、两次周期回调不自动恢复、显式 retry 后以同一任务完成并累计 2 次、提交才推进覆盖，后续不重复登记；模型请求为 0。永久回归保护原输入 / 次数、过时输入、权限撤销和其他取消拒绝，浏览器实测受限按钮及实际 202。详见总 Plan 第十九批，真实模型与 Desktop 不因此完成。

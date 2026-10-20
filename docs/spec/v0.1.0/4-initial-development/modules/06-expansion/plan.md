@@ -16,7 +16,7 @@ decision_mode: user-approved
 
 依据[统一 Design M06](../../design.md#knowledge-expansion)、[T07](../../design.md#technical-selection)与[总 Plan](../../plan.md)。Tavily 已选，不重开供应商选型；复用 Hermes 已有 Search / Extract 请求和结果处理，产品仅维护覆盖、逐主张来源和下游知识。
 
-Modify：`src/distillai/expansion.py`、`tools.py`、`hermes.py` 及搜索私有配置交付；测试复用 `tests/test_product_expansion.py`。不新增搜索网关、多供应商接口、网页清洗器或浏览器工程。
+Modify：`src/distillai/runtime.py`、`web/app.js`、`src/distillai/expansion.py`、`tools.py`、`hermes.py` 及搜索私有配置交付；测试复用 `tests/test_product_expansion.py`。不新增搜索网关、多供应商接口、网页清洗器或浏览器工程。
 
 ## M06-R1：删除重复 HTTP 请求实现
 
@@ -27,7 +27,7 @@ Modify：`src/distillai/expansion.py`、`tools.py`、`hermes.py` 及搜索私有
 
 ## M06-R2：复用覆盖进度与逐主张核查
 
-- [ ] **R2.1 复用定时触发并复跑公平性。** 3600 秒的周期唤醒由 M01 的 APScheduler IntervalTrigger 执行，配置更新重排下一次等待，重启从持久外扩状态重建 / 检查已到期项，不自建周期线程；回调仍用原 tick 判断是否能登记业务任务。每批最多 10 个已有知识点为可配置初值，新批次生效不清覆盖；稳定 ID 循环让历史节点仍轮到。无新依据 / 变化 / 用户请求不反复探索，失败不推进；retry 留原次数，重探用已有 client_request_id / 独立提交来源。
+- [x] **R2.1 复用定时触发并复跑公平性。** 3600 秒的周期唤醒由 M01 的 APScheduler IntervalTrigger 执行，配置更新重排下一次等待，重启从持久外扩状态重建 / 检查已到期项，不自建周期线程；回调仍用原 tick 判断是否能登记业务任务。每批最多 10 个已有知识点为可配置初值，新批次生效不清覆盖；稳定 ID 循环让历史节点仍轮到。无新依据 / 变化 / 用户请求不反复探索，失败不推进；retry 留原次数，重探用已有 client_request_id / 独立提交来源。
 - [x] **R2.2 复跑主张与下游。** expansions 保留 claims / proposed_connections / open_questions，各项引用本次确已读取来源；supported / conflicting 不可借整体摘要跨项背书。未核查保留缺口，第 16 次完成可发布，仍要第 17 次失败不发布 / 不交 M04。成功版本沿原入口交 M04、图与 M07，外部结果不登记用户掌握分析。
 - [ ] **R2.3 真实模型审阅。** 使用 a / b / 候选 e：只有 e-a 原文支持时 e-b 明确保留未核查；比较双端连接、单端 c / d 和必要先备的定性理由。保存主要来源、实际模型判断 / 版本及 M04 → M07 结果，不以搜索排序 / 节点度数作价值规则。
 
@@ -75,6 +75,14 @@ uv run --locked python -m unittest discover -s tests -p 'test_product_expansion.
 固定上游 _tavily_request / 归一化与产品 HTTPX 窄适配在实际 PM 环境通过 27 次 MockTransport 请求：keyed / keyless headers，401 / 403、402 / 429 / 432 / 433、500 / 302、超时、超尺寸、坏结构与 Extract 失败；错误不带原响应 / 私有 canary，不降级供应商，非固定 endpoint 在发送前拒绝。实际 keyless Search / Extract 再取官方正文 6,692 字符，保存 URL / 时间 / truncated=false；外扩 → M04 → M07 → 用户编辑的 5 / 3 / 3 / 3 次合成生成链通过，搜索 / 提取不另计生成，R1.4 完成。
 
 六种逐项证据拒绝检查覆盖 supported / conflicting 的缺失引用、非本任务读取引用和试图以已有主张证据给另一连接背书；各自确已读来源的两状态可保存，unverified 连接 / 开放问题保留，不登记 M05。实际 PM AIAgent 在第 16 次完成时可发布并登记一项 M04；请求第 17 次时只到 provider 16 次，任务 BudgetError、无发布 / 覆盖 / M04，知识原字节保持。结合当前 12 项永久外扩契约与实际 M04 → 图 / M07 交接，R2.2 完成。模型响应仍合成，R2.3 不勾选；R2.1 的在途停机策略仍待用户，详见[总 Plan](../../plan.md)第十七批及[待办](../../pending.md)。
+
+## 2026-10-20 第十九批：获准停机恢复完成
+
+用户批准仅对 periodic_coverage / runtime_stopping 显式续接原任务，统一 Design 升至修订 4。Runtime.retry 重新核对当前授权与原输入后排队，保留 ID、配置 / Prompt / 执行输入版本、调用审计和已用次数；失败不改持久任务。Web 处理历史复用原重试按钮；用户取消、权限撤销、其他模块及 user_requested 取消仍拒绝。
+
+新增长期回归先复现两个错误后通过：实际运行中停机 → 新 Store / Config / Runtime → tick 不自动恢复 → 手动续接原任务 → 提交才覆盖；另保护过时输入拒绝且原任务不变、当前路径权限重查及四类取消拒绝。14 项外扩、17 项 Runtime 测试通过。实际 APScheduler / SQLite 重启探针两次周期回调仍留原 pending，显式续接后由 1 次累计到 2 次、同一任务完成，后续不再重复；结合第十六批默认周期 / 配置 / 批次公平性证据，R2.1 完成。
+
+真实 Chromium 验证仅受限任务显示重试、三类其他取消隐藏，点击实际 API 返回 202、ID / 输入 / 配置 / 次数保持。探针最初误将相同输入的任务登记视为不同案例，命中既有去重；修正为不同合成输入并等待当前任务 ID 后通过，未修改产品去重规则。完整产品 234 tests / OK（101.281 秒）、永久 Chromium 5 tests / OK（18.501 秒）；模型响应 / Desktop 语义未验，R2.3 保留。
 
 <a id="historical-execution"></a>
 

@@ -473,6 +473,16 @@ SessionStart / UserPromptSubmit 的合成调用不生成正文队列；缺失 tr
 
 同步 M02 Plan、Design 和 pending：R2.3 的本地失败恢复窗口已补齐，真实 Desktop 触发 / 字段 / 顺序仍待 G2，checkbox 保持未完成。全范围 Ruff、离线锁、32 份文档 / 480 个本地链接与 git diff 检查通过，本批探针进程已退出。其余开放步骤仍需已列出的 M06 恢复选择、普通终端独立启动、Desktop、物理休眠、实际模型配置 / 语义和当前 SHA 的远端验收条件；不重复此前已完成的局部验收。设计 / 用户流程不变，material_revision 仍为 3，无需更新用户启动 README 或重跑完整产品 / 浏览器组。Goal 保持原目标，不标整体完成。
 
+## 2026-10-20 第十九批：批准恢复策略、M06 收尾与外部验收授权
+
+用户批准 pending 中 M06 推荐方案，以及 Desktop 合成实测、普通 PowerShell 独立后台验收；物理休眠只允许北京时间每天 02:00–08:00。另明确授权本任务分支 Push 和创建 PR，不包含发布 Review、Merge、Tag / Release。现有半小时 heartbeat 已更新这些条件，未新建重复自动任务；Goal 查询仍为 paused，不谎称已恢复 Goal 调度或整体完成。
+
+统一 Design 修订 4：仅周期外扩因 runtime_stopping 取消后可显式 retry 原任务，当前权限 / 固定输入重查成功才恢复授权、清原因并排队。其余取消终态不变；原输入 / 执行输入 / 配置 / Prompt / 预算与生成审计保留。处理历史同步原重试入口。永久回归先复现旧 retry 拒绝的两个失败，再验证重启和原预算完成、过时输入不改任务、撤权与其他取消拒绝。M06-R2.1 完成，M06-R2.3 仍待实际私有模型。
+
+新证据保留于忽略目录 .artifacts：nineteenth-expansion-red.log / nineteenth-expansion-green.log、nineteenth-runtime.log；完整产品 nineteenth-product-final.log 为 234 tests / OK / 101.281 秒，永久浏览器 nineteenth-browser-final.log 为 5 tests / OK / 18.501 秒。实际 APScheduler / SQLite 重启结果 nineteenth-periodic-scheduler.json 验证两次回调不自动恢复、同任务显式继续且许可 1 → 2、提交才记覆盖、其后不重复。实际 Chromium/API nineteenth-periodic-web.json 验证受限按钮、三类其他取消隐藏和 202 留输入 / 次数；截图 nineteenth-periodic-resume.png 仅含合成材料。UI 探针初次未区分去重任务、并曾只等待相同标题，修正合成用例与任务 ID 等待后通过；不是产品缺陷。真实模型请求均为 0。
+
+普通 PowerShell 配置 / 启动命令已准备在 .artifacts/open-acceptance-web.ps1，实际 Check 通过固定 Hermes SHA 与 PM 环境，instance=null。验收数据根 C:\Users\11954\.distillAI-acceptance，用户可在 Web 的配置 / 模型服务填写 endpoint、deepseek-flash 与密钥，保存后由 Agent 使用当前直连 SDK 验收；不索取聊天密钥，不手工改私有版本 JSON。独立后台仍需从 Codex Job 树之外实际启动，Desktop 信任 / compact / 中断仍需真实 UI，批准不等于这些验收已发生。当前检查时为北京时间 09:43，窗口外未触发休眠。后续依 pending 继续，远端 CI 结果另据实际 SHA 登记。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）
