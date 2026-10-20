@@ -8,7 +8,6 @@ import sys
 import tempfile
 import socket
 import threading
-import time
 import unittest
 from unittest.mock import patch
 
@@ -134,12 +133,13 @@ class CaptureTests(unittest.TestCase):
         listener = socket.socket()
         listener.bind(("127.0.0.1", 0))
         listener.listen()
+        listener.settimeout(10)
         self.addCleanup(listener.close)
-        received, finished = [], threading.Event()
+        received, finished, notified = [], threading.Event(), threading.Event()
 
         def accept():
             with listener.accept()[0] as client:
-                client.settimeout(2)
+                client.settimeout(10)
                 request = b""
                 while b"\r\n\r\n" not in request:
                     request += client.recv(8192)
@@ -148,23 +148,39 @@ class CaptureTests(unittest.TestCase):
                 while len(body) < length:
                     body += client.recv(8192)
                 received.append(json.loads(body))
-                finished.wait(2)
+                finished.wait(15)
 
         thread = threading.Thread(target=accept)
         thread.start()
         self.addCleanup(thread.join, 3)
         self.addCleanup(finished.set)
         (self.home / "instance.json").write_text(json.dumps({"url": f"http://127.0.0.1:{listener.getsockname()[1]}", "token": "synthetic"}))
-        started = time.monotonic()
-        capture(self.home, self.payload)
-        self.assertLess(time.monotonic() - started, .5)
+        def send():
+            capture(self.home, self.payload)
+            notified.set()
+        sender = threading.Thread(target=send)
+        sender.start()
+        self.addCleanup(sender.join, 3)
+        self.assertTrue(notified.wait(10), "Notification waited for the server's response")
+        self.assertFalse(finished.is_set())
         finished.set()
-        thread.join(2)
+        thread.join(10)
         self.assertEqual(received, [{"connector": "codex", "session_key": "synthetic_session"}])
         listener.close()
-        started = time.monotonic()
         notify(self.home, "synthetic_session")
-        self.assertLess(time.monotonic() - started, .5)
+
+    def test_notification_shares_200ms_deadline_and_never_reads_a_response(self):
+        (self.home / "instance.json").write_text(json.dumps({"url": "http://127.0.0.1:12345", "token": "synthetic"}))
+        with patch("distillai.capture.socket.socket") as socket_factory, \
+                patch("distillai.capture.time.monotonic", side_effect=[100., 100.05, 100.1]):
+            connection = socket_factory.return_value.__enter__.return_value
+            notify(self.home, "synthetic_session")
+            self.assertEqual(connection.settimeout.call_count, 2)
+            self.assertAlmostEqual(connection.settimeout.call_args_list[0].args[0], .15)
+            self.assertAlmostEqual(connection.settimeout.call_args_list[1].args[0], .1)
+            connection.connect.assert_called_once_with(("127.0.0.1", 12345))
+            connection.sendall.assert_called_once()
+            connection.recv.assert_not_called()
 
 
 if __name__ == "__main__":

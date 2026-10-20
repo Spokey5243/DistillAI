@@ -535,6 +535,14 @@ M03 Prompt 澄清只读游标、结果总集合及 closing 当前评分后，追
 
 核对 Microsoft SetWaitableTimer / SetSuspendState：Windows 8+ 相对 timer 不计低功耗时间，采用绝对 UTC FILETIME / fResume；不据 API 可用声称硬件实际唤醒。后续仅在用户 02:00–08:00 授权窗口内实施，脚本 07:15 后拒绝开始以留恢复 / 清理余量；设置 32 分钟唤醒、一次 sleep，核对原 PID / 截止、唯一 closing、零调用与系统 Kernel-Power 42 / 107 配对。已有 attempt 不自动重试，失败保留事实；finally 关闭 timer / 调度器 / Runtime、恢复进程权限并删除合成根。M03-R1.3 / R2.4 均不勾选，Desktop 与模型输出决策保持。具体文档链接与待执行命令保留于该忽略目录的 runbook，下一窗口重新预检，硬件实际按时唤醒不由本次准备保证。
 
+## 2026-10-21 第二十五批：慢磁盘下的 CI 验证边界
+
+5a3022baf5c1a6d677787cbf79bb648439cce85f 的 [PR CI 39463118315](https://github.com/Spokey5243/DistillAI/actions/runs/39463118315) 失败，base fa13b0bc346ace5e54d94806caedd7bf40220bf0、tested merge 3a4a9d6f99b678b3e7decd57d163592e402ef1c6。235 项中两项失败：采集测试将实际队列 / cursor 保存也计入 0.5s 通知限时，观察到 0.741s；SQLite 故障测试在发布到指定文件前等待 3s 超时并提前结束注入上下文。浏览器步骤 skipped，不作成功；未盲目 rerun 旧失败 head。此前生产 / 测试内容相同的两条成功 CI 保留，不据此忽略本次失败。
+
+在忽略目录 `reproduce_ci_timing.py` 分别注入 0.6s cursor 保存和 3.2s prepared 清单保存延迟，旧测试稳定复现三处断言失败；修正后同一慢 I/O 条件 **2 tests / OK，40.805s**。采集沿真实 socket / 阻止响应的服务器，以事件确认通知先返回，不对磁盘 I/O 设网络阈值；新增永久回归用受控单调时钟检查 connect / sendall 共用 200ms 额度且不读取响应，保护明确通知契约，不依赖 CI 机器速度。SQLite 沿真实 BEGIN IMMEDIATE 与文件快照 / 回滚 / API 隔离 / 零重执行断言，仅将故障点就绪和超时完成事件的测试等待上限设为 30s，实际数据库 timeout 不变。定向采集 / 状态 **28 tests / OK，54.369s**，Ruff、离线锁和 diff 检查通过。
+
+最终完整产品 **236 tests / OK，104.012s**（`twentyfifth-product.log`），采集 fixture 增加接收 / 接受超时及有界清理后定向 **12 tests / OK，1.869s**（`twentyfifth-capture-final.log`）；Ruff、离线锁和 diff 通过。本批只改验证 fixture，不改产品采集、发布、预算、配置、工作流或 Design，material_revision 保持 4；新 head 的远端证据另核对。物理休眠已在 04:02 重新预检通过但尚未触发；不让运行中的其他验证跨机器睡眠来制造超时。Desktop 与模型输出决策没有新条件。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

@@ -327,9 +327,9 @@ class StateTests(unittest.TestCase):
                     try:
                         with patch.object(store, "_save_commit", side_effect=save):
                             runtime.dispatch()
-                            self.assertTrue(locked.wait(3))
+                            self.assertTrue(locked.wait(30), "Publication never reached the injected SQLite writer")
                             self.assertEqual(snapshots, [[b"new-a", b"new-b" if written_count == 2 else b"old-b"]])
-                            self.assertTrue(unavailable.wait(7), "The real SQLite writer did not time out")
+                            self.assertTrue(unavailable.wait(30), "The real SQLite writer did not time out")
                             self.assertTrue(store.state.failed)
                             app = create_app(runtime)
                             with TestClient(app, base_url=app.state.control.url) as client:
