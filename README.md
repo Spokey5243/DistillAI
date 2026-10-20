@@ -4,6 +4,8 @@
 
 当前计划已按用户意见纳入 SQLite 控制状态事务、Playwright 浏览器回归和 Ruff 静态检查，具体见总 Plan、M01-R6 与 M08-R3。SQLite 控制状态与离线迁移工具已实现并通过合成数据验证；产品依赖与 Chromium 已安装，真实浏览器回归已运行。未迁移真实用户数据。
 
+2026-10-20：M01、M04 与 M08 的当前模块 Plan 已完成；真实流式工具往返、普通终端独立后台及 7392422 的 Windows PR CI 已通过（产品 235 项 / 浏览器 5 项）。真实语义对照及未通过的大批量 M06 后继详见[语义审阅](docs/spec/v0.1.0/4-initial-development/semantic-review.md)，需用户集中确认的事项见[待办](docs/spec/v0.1.0/4-initial-development/pending.md)。Desktop 闭环、物理休眠及整体产品验收仍未完成；后续提交的 CI 按各自 SHA 记录。以下日期段落保留当时进度。
+
 2026-10-18，当前框架下 Web 的来源 / 版本 / 关联回查、两类纠错、冲突与失败留输入已完成实际浏览器验收，M08 为 implemented。维护回调使用合成数据；真实模型语义、Codex Desktop 闭环、独立后台启动及 PR / CI 仍待验，整体产品尚未完成。
 
 ## GitHub 与标准开发流程

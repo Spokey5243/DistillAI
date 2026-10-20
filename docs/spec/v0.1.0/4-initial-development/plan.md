@@ -185,7 +185,7 @@ git diff --check
 
 **Files:** `README.md`、`.agents/rules/python.md`、`.agents/rules/github-actions.md`、`.github/workflows/ci.yml`、本目录入口和模块记录；临时证据写 `.artifacts/initial-development/`。
 
-- [ ] **A1.1 离线与依赖检查。** 先准备锁定依赖与 Chromium，再跑上面检查；CI 在原 Windows job 按锁安装 dev / browser 组、准备 Chromium、运行 Ruff / 既有组 / 浏览器组，不下载 Hermes / 个人数据或用个人密钥。同步 Python / Actions 规则的旧零依赖表述，Ruff 只启用本稿明确的错误规则。核对实际 PR tested SHA 后才能声称 GitHub CI 通过；此项不包含远端写授权。
+- [x] **A1.1 离线与依赖检查。** 先准备锁定依赖与 Chromium，再跑上面检查；CI 在原 Windows job 按锁安装 dev / browser 组、准备 Chromium、运行 Ruff / 既有组 / 浏览器组，不下载 Hermes / 个人数据或用个人密钥。同步 Python / Actions 规则的旧零依赖表述，Ruff 只启用本稿明确的错误规则。核对实际 PR tested SHA 后才能声称 GitHub CI 通过；此项不包含远端写授权。
 - [ ] **A1.2 Desktop 闭环。** 合成会话贯通采集 → episode 关闭 / 修订 → M04（含空结果）→ M05 → M07 → 查询 / 新用户表现再分析。检查实际来源和每次固定版本，不用编写好的 localhost 模型响应代替语义评价。
 - [x] **A1.3 恢复与外扩。** 丢通知、进程终止、旧输入、并发编辑、查询取消、发布中断各复用现有用例；再做一条真实搜索 / 读取 → M04 → M07 链。失败不发布、不推进、不丢用户修改，外部内容不当用户掌握。
 - [ ] **A1.4 日常体验。** 四入口浏览 / 编辑、409 和错误留输入、旧异步响应不盖新内容、键盘 / 窄屏、两次 compact 原选材恢复。检查原任务仍可继续、无候选为空、自然反馈无诱导。
@@ -504,6 +504,22 @@ SessionStart / UserPromptSubmit 的合成调用不生成正文队列；缺失 tr
 本批最终产品完整 **235 / OK / 103.496s**（twentyfirst-product-with-expansion.log），M05 **7 / OK / 0.977s**、Hermes **6 / OK / 0.382s**、M06 **14 / OK / 2.689s**，全 src / tests Ruff 与离线锁通过。生产修改限严格单围栏入口、首次冻结的现有 M05 / M06 schema、原字段归属提示；不改协议、预算或自动重试。七组补测先用 88 次完成：M04 全部成功，M05 五组成功、两组拒绝；新反证据 / 正确依赖顺序的分组任务再分别以 9 / 5 次成功。旧失败 / 输入 / Prompt / 次数保留；一次提前冻结的补测副本另耗尽 16 次，失败原样保留。原七组来源 hash 未变；[实际语义审阅](semantic-review.md)给出定性结论，M05-R2.2 留待用户集中审阅，R2.3 仍待 Desktop。
 
 M06 实际主要来源对照暴露 open_questions 字符串错误，7 次生成被严格拒绝；补现有 schema 后另一明确请求前八次搜索 / 提取为 HTTP 429，第九次取得主要来源，但 300 秒期限清理时已用 16 次且未结束，保留 cancelled / runtime_stopping，不发布、不交 M04 / M07。R2.3 未完成，后续先核对上游条件，不清预算或反复空转。详见 twentyfirst-real-expansion.json、twentyfirst-expansion-rate-limit.json。G2 无新事件证据；当前北京时间晚间不在物理休眠窗口，未触发休眠。
+
+## 2026-10-20 第二十二批：当前生产代码 CI 与运行入口完成
+
+PR #6 head **7392422f9caf5bb467de7f6c619b2b93102d2d87** 的 [Windows CI 39445607892](https://github.com/Spokey5243/DistillAI/actions/runs/39445607892) 已完成 SUCCESS，base **fa13b0bc346ace5e54d94806caedd7bf40220bf0**，实际 tested merge **c248be9d2c38c02417b9baaa5b3d1eefb5bce55c**。日志核对产品 **235 / OK / 143.124s**、Chromium **5 / OK / 18.689s**、Push Guard **16 / OK / 40.003s**；采集、锁安装与 Ruff 同时通过（twentyfirst-ci-739.log）。据此完成 A1.1；后续文档提交的 head 与其 CI 分开记录，不能冒用本次 SHA。
+
+原生 Check 退出 0，固定 Hermes / PM 环境保持；普通终端 Web 实际委派到同一 Serve 后台入口，关闭发起窗口 / MCP 退出后的身份、非 Job、Stop 及配置保留证据核对完成。M01-R3.4 勾选，M01 状态 implemented，Desktop 冷启动仍归 M07 待验。半小时 heartbeat 实际触发当前轮，Goal 接口仍为 paused，未新建替代 Goal；当前恢复授权下继续推进，不将整体标完成。
+
+本轮零模型的固定 Tavily keyless Search / Extract 预检均成功，实际主要来源正文 7,037 字符。已按恢复后的外部条件发起新的明确 M06 验收，旧 7 次失败与 16 次取消任务保持不变；实际新外扩 / M04 / M07 结果另补。不以预检或外扩提交本身勾选 R2.3。
+
+同批 M04 七类独立语义真实执行共 **36** 次，逐条审阅同义稳定 ID、同名区分、来源冲突并存、联想未核查、修订后部分支持、inactive 保历史与正常空结果。知识维护 **9 / OK / 1.879s**、图 **5 / OK / 0.660s**、发布冲突 **2 / OK / 0.879s** 补验索引故障 / 历史 / 补建不重算 / 不覆盖同期编辑；M04-R2.3 完成，模块状态 implemented。M04 Prompt 只补独立工具同轮调用及本节点关系引用规则，不改工具或发布校验。大批量 M06 后继失败不被这些独立案例替代。
+
+M03 Prompt 澄清只读游标、结果总集合及 closing 当前评分后，追问 / 纠错 / 同主题新目标 / 插曲 / 短窗口收尾 / 新续聊取得真实结果，具体阶段分别 5、4、9、4+5、5+6、4 次；episode **10 / OK / 5.888s**。旧段全移空材料被非空约束拒绝并在 300 秒清理时保留 7 次取消；另一个合法部分修订的 assignments / 新引句被程序接受，但模型改动不允许的 topic，8 次后拒绝提交。因此 R2.4 仍未完成，不替代 Desktop / 真实 30 分钟或休眠。
+
+恢复后的 M06 外扩 **5 次成功**，原文支持 e-a / e-c / 必要先备，e-b / e-d 留未核查；后继先遇验收种子缺来源字段（16 次后拒绝），修正材料后另一次 16 次预算耗尽，两个 Prompt 对照各 12 次仍输出非自身端点关系，均未发布、未交 M07。M06-R2.3 未勾选，复杂结果可靠性与 M03 修订同属 pending 的模型 / 有界反馈路线待决；不清预算，不反复试同一失败，也不自行新增反馈流程或提高上限。[语义审阅](semantic-review.md)给出实际输出、理由与局限。原始材料 / 日志 / 私有配置仍不提交。
+
+本批最终当前 Prompt 的完整产品回归 **235 / OK / 102.424s**（twentysecond-product-final.log），Ruff、离线锁和 diff 检查通过。M03 / M04 合成验收根没有仍在运行的任务；原失败和取消均保留，不自动重排。当前后续改动只有既有 Prompt 契约澄清及文档 / 状态更新，新提交触发独立 CI；7392422 的成功结果继续只绑定其原 SHA。M01 / M04 / M08 为 implemented，其余模块和整体保持未完成。
 
 <a id="historical-execution"></a>
 

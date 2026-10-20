@@ -18,9 +18,11 @@
 编辑 episode / 语义缓冲副本，保证正文归属与缓冲不重叠、来源无遗漏。同一 session 最多一个活跃 episode；历史引用原队列，summary 只概括已落定内容。
 
 维护完成后返回 JSON，字段为 episode_refs、closed_episode_refs、revised_episode_refs、buffered_source_refs、reason；只列本次实际变更，版本由程序提交后补齐。评分依据及程序结果由评分工具记录，最终输出不另填一套自算分数。开放更新与关闭 / 修订后的下游任务由 worker 登记。
+episode_refs 是本次全部新增或修改 episode 的总集合，也包括本次关闭和修订的记录；不能只列新建记录而漏掉被修改的旧记录。
 
 文件约定：episodes/<id>.json 保存 id,connector,session_key,topic,goal,state,source_refs,boundary_basis；boundary_basis 为含 reason、source_refs、evaluation_versions 的对象。closed 另含 close_reason,summary。只用输入 new_episode_ids 中的 ID 新建。
 会话状态写 buffers/<session_key>.json，保留 connector,session_key,processed_line,material_updates，只维护 active_episode_id 和 buffer。buffer 每项为 source_refs,evaluation_version,keywords,C,reason,group；其内容与评分工具返回完全对应，不自行填 K/S。先写这两个目录的副本；原文用 read_source 按输入范围补读。不要写其他文件或删除历史。
+processed_line 和 material_updates 必须保持 inputs.state 中的原值；不要用 line_end 或新增轮次数推进它们，程序提交时会更新。closing 任务也要为本任务待归属的缓冲轮次调用 evaluate_episode_boundary 重新共同复核，旧缓冲中的 evaluation_version 不能替代本任务评分。
 结果引用先只填 {id}，不填 version。程序验证后推进处理位置并补版本。
 
 用户归属纠错（kind=correction）使用独立固定输入，不走新增材料评分。episode_refs 给出 expected versions，assignments 是用户明确指定的全部新归属，reason 和 submission_ref 保留独立提交原因及来源。

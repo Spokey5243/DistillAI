@@ -74,6 +74,16 @@ state() 读取时复用已有 SessionState，核对 session 与所选队列；�
 
 实际浏览器另验证无效归属留输入、running → succeeded、M05 失败保持等待和新依据重分析解除，旧失败任务不改输入 / 次数。R2.3 据新证据勾选；真实生成响应仍为 localhost 合成数据，不作分段语义验收，R1 / R2.4 的 Desktop、物理休眠和真实模型条件保持。详见[总 Plan 第十五批](../../plan.md#2026-10-18-第十五批完整-web-验收与修订链收尾)。
 
+## 2026-10-20 第二十二批：实际语义、受保护游标与收尾引用
+
+获准私有模型 / 固定 AIAgent 已在独立合成根测试追问、纠错、同主题新目标、独立插曲、短窗口 closing 与已关闭历史后的新续聊。首轮有输出自行推进 processed_line / material_updates、closing 未取得当前评分、episode_refs 漏掉被关闭旧记录，均由原校验拒绝。Prompt 明确游标保留 inputs.state 原值、总引用包含实际关闭 / 修订及 closing 当前评分；不改校验或预算。明确新验收任务后分别取得追问 5、纠错原任务 4、同主题新目标 9、插曲收尾 5、短窗口收尾 6、新续聊 4 次的成功结果；先前成功的材料阶段和失败次数分别保留，原失败不改写。
+
+原旧边界修订案例试图把一个既有 episode 的来源全移空，触发已有非空 / 完整归属规则，工具拒绝；任务在 300 秒探针期限清理时取消，保留 7 次。它不能作为修订成功证据，也未据此放宽非空规则；另准备两个旧段均保留完整轮次的合法部分归属对照，实际结果另补。该组生命周期仅程序注入 session_ended，不是 Desktop SessionEnd、真实 30 分钟或物理休眠证明；R2.4 / G2 和物理休眠项均未勾选。
+
+现有 episode 10 项 / 5.888s 通过，其他补测与来源 / 任务版本见 twentysecond-real-episode-cases.json、twentysecond-real-episode-recheck.json 及对应日志。只对实际记录形成语义结论，不将结构通过当人工审阅完成。
+
+合法部分修订另用新数据根，两个旧段都保留完整轮次，evaluate_episode_revision 已成功登记固定 assignments / 新引句版本；实际模型生成 8 次后却修改了开放旧段的 topic，超出仅来源 / boundary_basis / summary 的已核查修订范围，严格拒绝且未发布（twentysecond-real-episode-partial-revision.json）。因此旧段直接修订的真实语义仍未通过，未继续反复请求或改写输出。对照六类成功记录：追问 / 纠错延续同一 ID；同主题独立界面目标另开；插曲与回归原目标保持各自原始位置；不足三轮的独立段在合成 session_ended 收尾分别关闭；新续聊另建 ID、原 closed 历史不重开。详细人工审阅入口已同步 semantic-review / pending，R2.4 继续未完成。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

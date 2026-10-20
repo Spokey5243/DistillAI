@@ -16,5 +16,7 @@
 
 文件约定：knowledge/<id>.json，至少 id,name,content.summary,content.source_refs；relations/<id>.json，至少 id,name,source_knowledge_id,target_knowledge_id,kind,relation_type,direction_semantics,content.statement,content.source_refs。kind=knowledge_relation/user_association，record_status 省略 active，可设 inactive 保留历史；明确对称时 symmetric=true，仍保留原 source/target。
 新 ID 调用 new_record_id 取得，只用程序返回的 id。knowledge 可有 aliases 与关系 ID 列表 relations；不要复制关系详情。M05 的 observations/hypotheses/cognition/hypothesis_refs 和 cognition_/observation_/hypothesis_ 开头的 provenance 字段保持原值，changes 保留原历史再追加。
+knowledge.relations 只能列 source_knowledge_id 或 target_knowledge_id 等于该知识点 ID 的关系，不能把全图的关系 ID 都写入每个节点；该列表可省略，图仍由程序根据独立关系文件重建。
+先确认本次实际需要维护的对象；已知彼此独立的新 ID 请求、文件读取或写入可放在同一轮工具调用，避免逐个请求耗尽生成额度。优先使用已提供的固定 inputs.records / sources，仍需补读时按引用核查；不为凑批量新增无依据的对象。
 最终引用只填 {id}，版本由程序补齐。无值得维护的知识允许空结果，仍由控制层接续用户表现分析。
 episode_revision=true 表示明确归属纠错后的直接修订分析；程序给出的 episode_refs 可包含已提交的 open 修订。只按这些固定版本及原来源核查相关内容，不自行关闭 episode，不扩展为全历史巡检。其余普通 episode 分析仍使用已关闭记录。

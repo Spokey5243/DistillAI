@@ -1062,3 +1062,7 @@ MCP 复用后台时直接采用启动模块已有 INSTANCE_RECORD / INSTANCE_HEA
 M05 首次冻结 execution_input_version 时，连同 assessment_at 保存由现有 Pydantic TypeAdapter 生成的观察、假设、判断与结果 schema，不维护第二份字段定义；已冻结任务不换输入。Prompt 明确优先分析本任务冻结的 episodes / records / sources，缺失历史保持未知，不采用其他任务未提交的副本；同步说明 episode_id、needed_evidence 与 changes 的既有字段归属。未放宽字段校验、预算、来源或发布规则。属于既定严格结构和证据边界的遗漏闭环，material_revision 保持 4；M01 / M05 / 总 Plan 补当前验证记录，验收标准与实施顺序不变。
 
 后续真实对照同样暴露 M06 open_questions 的对象格式遗漏，首次冻结输入时直接附现有 ExpansionRecord / ExpansionResult schema；Prompt 明确每项为带 statement / source_refs 的对象。M05 再明确会话观察需实际 episode_id、只有独立 user_submission 可省略，以及最终 hypothesis_refs 只列实际修改的外部假设文件，不列知识内假设。均为现有归属和校验契约的提示澄清，旧失败与冻结输入保持，不新增自动修复或补额；material_revision 仍为 4，Plan 仅补证据与待验状态。
+
+### 2026-10-20：M03 / M04 生成契约提示澄清（Agent 闭环）
+
+M03 明确 processed_line / material_updates 保持 inputs.state 原值，由程序推进；episode_refs 是全部实际新增 / 修改记录的并集，包含关闭 / 修订记录；closing 的缓冲归属继续取得当前任务的共同评分，不能用历史 evaluation_version 替代。M04 明确可在同轮调用彼此独立的现有工具，并重申可选 knowledge.relations 仅引用自身端点上的边，图仍由独立关系详情重建。仅澄清已批准控制字段、评分、引用与预算安排，未增加工具、自动修正或预算，也不改变失败终态。material_revision 保持 4；对应实际验证和仍失败的模型输出分别记录，不据提示修改宣称全链通过。

@@ -3,7 +3,7 @@ version: v0.1.0
 issue: 4
 branch: codex/4-initial-development
 workflow: exploratory
-status: approved
+status: implemented
 decision_mode: user-approved
 ---
 
@@ -43,7 +43,7 @@ SQLite 增补：Create `src/distillai/state.py`（只封装具体控制状态 SQ
 - [x] **R3.1 按安装归属锁依赖。** 控制 / Web / MCP 由 uv 项目环境运行，Hermes 子进程由固定 PM 应用环境运行。实际直接导入的 FastAPI、Uvicorn、HTTPX、Pydantic、FastMCP、Loguru、NetworkX、AnyIO、jsonschema、Windows pywin32、Portalocker、ItsDangerous、pydantic-settings、APScheduler 3.x、pathvalidate、boltons 声明为直接依赖，由 uv 解析整组兼容版本并生成锁。候选 FastMCP 4.1.0 / Loguru 0.7.3，MCP SDK 不再独立于上层 FastMCP 强行冻结；只有直接使用底层 SDK 才保留直接声明。SQLite 使用标准库 sqlite3；Ruff 放 dev 组、Playwright 放 browser 组，均不进入产品运行依赖。先拆清 `task-child → hermes → runtime/storage/sources` 当前导入链，任务入口不能因父进程的 Store / schema 顶层 import 被迫加载产品环境包；确需共享的执行模型逐项核对 PM 已有版本，不能假定传递包兼容。Web / 图 / Loguru 不拖进 PM，不往 PM 安装产品框架、不复制整份 PM 依赖、不手改 lock。
 - [x] **R3.2 修正环境检查和解释器路由。** `startup.check_environment` 拆清产品依赖检查与 Hermes SHA / PM receipt / AIAgent 导入检查；不要求 PM 匹配全产品锁。启动脚本由产品解释器执行，`-HermesPython` 只定位任务解释器；MCP / Web 不再自动切 PM。保存的 launch 配置按实际职责读取，Windows 底层解释器 / launcher / suspended → Job → resume 沿已有已验证实现。
 - [x] **R3.3 统一普通本机客户端。** 启动和 MCP 复用 HTTPX 的 request / timeout / 错误映射，loopback 禁用环境代理、不跟随外部 redirect；不新建通用 HTTP 封装层。采集通知继续不读响应，200ms / 不启动后台语义不因客户端替换改变。
-- [ ] **R3.4 同步本地与 CI。** 更新根 README、Python / Actions 规则、原 Windows CI job 的项目锁安装和测试命令；仍无模型 key / Hermes 下载 / Codex CLI。记录 Check / Serve / Web / Mcp / Stop 的实际解释器、退出和实例身份，不把未验冷启动写通过。
+- [x] **R3.4 同步本地与 CI。** 更新根 README、Python / Actions 规则、原 Windows CI job 的项目锁安装和测试命令；仍无模型 key / Hermes 下载 / Codex CLI。记录 Check / Serve / Web / Mcp / Stop 的实际解释器、退出和实例身份，不把未验冷启动写通过。
 - [x] **R3.5 接入 Ruff。** pyproject 的 `[tool.ruff.lint]` 初始 select 为 `E9,F63,F7,F82,F401,F811`，检查 src/distillai、产品插件、scripts、tests 和 .codex/hooks。运行下列命令，修复命中的真实未定义名称 / 无用导入等；不启用全量风格规则或顺便 format 全仓，不用整体 ignore / noqa 掩盖问题。开发组安装与 CI 命令同步 Python / Actions 规则；规则配置核对是一次性验证，不新增检查配置字符串的永久测试。
 
 ## M01-R4：复用业务回归并清点删除
@@ -196,6 +196,12 @@ MCP local_request 直接采用启动模块已有 INSTANCE_RECORD / INSTANCE_HEAL
 ## 2026-10-20 第二十一批：严格结果解析与 CI 证据
 
 真实模型返回单个完整 JSON 围栏时，以标准库完整匹配去围栏后执行原 json.loads；裸 JSON、领域校验和错误拒绝保持。新永久用例先复现围栏失败，再验证合法围栏 / CRLF 及说明文字、多个 JSON、尾随载荷、其他语言和坏正文拒绝。当前全产品 235 项通过（103.496s），Hermes 6 项、认知 7 项及外扩 14 项通过，Ruff / 离线锁通过。17a23c8 对应 PR tested merge 868d000 的 Windows CI 已通过；当前新修复需新提交 CI，R3.4 暂不以旧 head 提前完成。普通终端独立后台证据仍有效，Desktop 冷启动另待 G2。
+
+## 2026-10-20 第二十二批：本地入口与当前生产代码 CI 收尾
+
+7392422f9caf5bb467de7f6c619b2b93102d2d87 已获 [PR CI 39445607892](https://github.com/Spokey5243/DistillAI/actions/runs/39445607892) Windows tests SUCCESS，实际 tested merge c248be9d2c38c02417b9baaa5b3d1eefb5bce55c、base fa13b0bc346ace5e54d94806caedd7bf40220bf0。产品 235 项 / 143.124s、浏览器 5 项 / 18.689s、Push Guard 16 项 / 40.003s，采集、Ruff 和锁定安装通过；无个人 key、Hermes 下载或旧 CLI。
+
+本轮 `open-acceptance-web.ps1 -Action Check` 退出 0，核对固定 Hermes SHA a7b2ba02e3b9bb95d0cac87a6312cc82a3bc3eed、PM 3.14.7 和原应用解释器，后台当前未运行。第二十批普通终端的 Web 实际通过 start_product 调用同一 `serve --home` 后台入口（startup.py），因此不是用模拟启动代替 Serve。关闭发起终端后实例 4ae6621ae8d447d486468185e3380e41 / PID 43304 仍 ready 且非 Job；MCP 实际工具调用退出后同一实例仍在，最终 Stop 及配置保留通过。结合此前 Check / 启动 / 单例与退出证据完成 R3.4，本模块新 Plan 全部完成，状态为 implemented；不表示 M07 的 Desktop 自动冷启动或整体产品已经验收。
 
 <a id="historical-execution"></a>
 
