@@ -1,0 +1,78 @@
+{
+  "example_note": "全部内容、日期、ID、队列行号和用户表现均为合成示例。M04 已采用本例的字段组织；来源按 M02 队列引用，关系仅保存独立记录 ID，合成引用不对应实际文件。认知、观察与假设具体语义由 M05 对齐，理解状态根据历史表现大致估计。",
+  "id": "kp-example-chain-rule",
+  "name": "链式法则",
+  "aliases": ["复合函数求导"],
+  "content": {
+    "summary": "复合函数的导数由外层函数的导数与内层函数的导数相乘得到。",
+    "explanation": "对于 y=f(g(x))，有 dy/dx=f′(g(x))·g′(x)。求导时需要同时考虑外层变化与内层变化。",
+    "conditions": ["相关函数在所讨论的位置可导"],
+    "source_refs": [{"connector": "codex", "session_key": "session-example-chain-01", "line_start": 2, "line_end": 2}]
+  },
+  "relations": [
+    "rel-example-derivative-chain-rule"
+  ],
+  "provenance": {
+    "created_at": "2026-09-01T10:00:00+08:00",
+    "created_from_episode_id": "ep-example-01",
+    "content_updated_at": "2026-09-01T10:00:00+08:00",
+    "content_updated_from_episode_id": "ep-example-01",
+    "cognition_updated_at": "2026-09-08T10:00:00+08:00",
+    "cognition_updated_from_episode_id": "ep-example-02"
+  },
+  "observations": [
+    {
+      "id": "obs-example-01",
+      "observed_at": "2026-09-01T09:50:00+08:00",
+      "source": {"episode_id": "ep-example-01", "source_refs": [{"connector": "codex", "session_key": "session-example-chain-01", "line_start": 1, "line_end": 1}]},
+      "task": "解释为什么复合函数求导需要乘以内层导数",
+      "help": {"hint": "none", "previously_shown_explanation": true},
+      "performance": "刚看过助手解释后，用户用自己的话正确复述了内外层变化的关系。",
+      "outcome": "correct_explanation",
+      "scope": "即时解释；不构成间隔回忆或独立迁移证据"
+    },
+    {
+      "id": "obs-example-02",
+      "observed_at": "2026-09-08T09:50:00+08:00",
+      "source": {"episode_id": "ep-example-02", "source_refs": [{"connector": "codex", "session_key": "session-example-chain-02", "line_start": 1, "line_end": 3}]},
+      "task": "求 sin(x²) 的导数",
+      "help": {"hint": "初次回答后，助手提示检查内层函数", "answer_shown_before_response": false},
+      "performance": "用户先回答 cos(x²)，得到提示后改为 2x·cos(x²)。",
+      "outcome": "partial_independently_correct_with_hint",
+      "scope": "间隔七天后的这道应用题；无法仅据此区分遗忘、理解不稳与一次疏漏"
+    }
+  ],
+  "hypotheses": [
+    {
+      "id": "hyp-example-01",
+      "claim": "用户能在提示下使用链式法则，但独立应用尚不稳定。",
+      "status": "provisional",
+      "supporting_observation_ids": ["obs-example-02"],
+      "counter_observation_ids": [],
+      "needed_evidence": "在未给提示的新题中，用户能否主动识别内层函数并完整求导"
+    },
+    {
+      "id": "hyp-example-02",
+      "claim": "漏乘内层导数可能是一次疏漏，尚不能确认稳定能力不足或发生衰退。",
+      "status": "open_alternative",
+      "supporting_observation_ids": [],
+      "counter_observation_ids": [],
+      "needed_evidence": "更多无提示表现，用于区分偶发失误与持续困难"
+    }
+  ],
+  "cognition": {
+    "assessed_at": "2026-09-08T10:00:00+08:00",
+    "understanding": {
+      "explain": "曾在刚看过解释后正确复述；间隔后能否独立解释尚未知",
+      "apply": "最近一次独立应用不完整，提示后完成",
+      "transfer": "unknown",
+      "hypothesis_ids": ["hyp-example-01", "hyp-example-02"],
+      "observation_ids": ["obs-example-01", "obs-example-02"]
+    },
+    "latest_observed_performance_id": "obs-example-02"
+  },
+  "changes": [
+    {"at": "2026-09-01T10:00:00+08:00", "episode_id": "ep-example-01", "summary": "创建知识点并记录即时解释表现。"},
+    {"at": "2026-09-08T10:00:00+08:00", "episode_id": "ep-example-02", "summary": "知识正文不变；新增间隔后的实际表现，结合历史回复修订理解判断，保留竞争解释。"}
+  ]
+}

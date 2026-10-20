@@ -1,0 +1,17 @@
+{
+  "name": "distillai",
+  "version": "0.1.0",
+  "description": "Local DistillAI capture and sourced context for Codex.",
+  "author": {
+    "name": "DistillAI"
+  },
+  "hooks": "./hooks/hooks.json",
+  "interface": {
+    "displayName": "DistillAI",
+    "shortDescription": "Capture conversation materials locally for DistillAI.",
+    "developerName": "DistillAI",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "Explain how to configure DistillAI."
+  }
+}

@@ -1,0 +1,24 @@
+{"type": "response_item", "timestamp": "2026-10-14T09:00:00+08:00", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": " question"}, {"type": "image", "url": "data:image;base64,SECRET"}, {"type": "text", "text": "second text "}, {"type": "reasoning", "text": "SECRET"}]}}
+{"type": "response_item", "timestamp": "invalid", "payload": {"type": "message", "role": "assistant", "content": " working ", "channel": "analysis", "phase": "commentary"}}
+{"type": "response_item", "timestamp": null, "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "answer"}], "phase": "final_answer"}}
+{"type": "response_item", "payload": {"type": "reasoning", "text": "SECRET"}}
+{"type": "response_item", "timestamp": null, "payload": {"type": "message", "role": "developer", "content": "SECRET"}}
+{"type": "response_item", "timestamp": null, "payload": {"type": "message", "role": "user", "content": "  "}}
+{"type": "response_item", "timestamp": null, "payload": {"type": "message", "role": "user", "content": "<unknown>keep"}}
+{"type": "response_item", "timestamp": null, "payload": {"type": "message", "role": "user", "content": "prefix <environment_context>keep"}}
+{"type": "response_item", "timestamp": null, "payload": {"type": "message", "role": "assistant", "content": "<environment_context>assistant"}}
+{"type": "response_item", "timestamp": null, "payload": {"type": "message", "role": "user", "content": "  <environment_context>SECRET"}}
+{"type": "response_item", "timestamp": null, "payload": {"type": "message", "role": "user", "content": "<environment_context attribute>SECRET"}}
+{"type": "response_item", "timestamp": null, "payload": {"type": "message", "role": "user", "content": "  <turn_aborted>SECRET"}}
+{"type": "response_item", "timestamp": null, "payload": {"type": "message", "role": "user", "content": "<turn_aborted attribute>SECRET"}}
+{"type": "response_item", "timestamp": null, "payload": {"type": "message", "role": "user", "content": "  <user_instructions>SECRET"}}
+{"type": "response_item", "timestamp": null, "payload": {"type": "message", "role": "user", "content": "<user_instructions attribute>SECRET"}}
+{"type": "response_item", "timestamp": null, "payload": {"type": "message", "role": "user", "content": "  <apps_instructions>SECRET"}}
+{"type": "response_item", "timestamp": null, "payload": {"type": "message", "role": "user", "content": "<apps_instructions attribute>SECRET"}}
+{"type": "response_item", "timestamp": null, "payload": {"type": "message", "role": "user", "content": "  <plugins_instructions>SECRET"}}
+{"type": "response_item", "timestamp": null, "payload": {"type": "message", "role": "user", "content": "<plugins_instructions attribute>SECRET"}}
+{"type": "response_item", "timestamp": null, "payload": {"type": "message", "role": "user", "content": "  <skills_instructions>SECRET"}}
+{"type": "response_item", "timestamp": null, "payload": {"type": "message", "role": "user", "content": "<skills_instructions attribute>SECRET"}}
+{"type": "response_item", "timestamp": null, "payload": {"type": "message", "role": "user", "content": "  <collaboration_mode>SECRET"}}
+{"type": "response_item", "timestamp": null, "payload": {"type": "message", "role": "user", "content": "<collaboration_mode attribute>SECRET"}}
+{"type":"response_item"

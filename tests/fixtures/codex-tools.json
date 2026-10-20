@@ -1,0 +1,65 @@
+[
+  {
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": [
+        "python",
+        "build.py"
+      ]
+    },
+    "expected": "ran: python build.py"
+  },
+  {
+    "tool_name": "exec",
+    "tool_input": {
+      "command": "git status --short"
+    },
+    "expected": ""
+  },
+  {
+    "tool_name": "shell",
+    "tool_input": {
+      "command": "echoed x"
+    },
+    "expected": "ran: echoed x"
+  },
+  {
+    "tool_name": "local_shell",
+    "tool_input": {
+      "command": " "
+    },
+    "expected": ""
+  },
+  {
+    "tool_name": "apply_patch",
+    "tool_input": {
+      "input": "*** Update File: file0\n*** Update File: file1\n*** Update File: file2\n*** Update File: file3\n*** Update File: file4\n*** Update File: file5\n*** Update File: file6"
+    },
+    "expected": "edited: file0, file1, file2, file3, file4"
+  },
+  {
+    "tool_name": "apply_patch",
+    "tool_input": {
+      "patch": "empty"
+    },
+    "expected": "applied a patch"
+  },
+  {
+    "tool_name": "mcp__distillai__query_context",
+    "expected": ""
+  },
+  {
+    "tool_name": "query_context",
+    "expected": "used query_context"
+  },
+  {
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    "expected": "ran: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  {
+    "expected": ""
+  }
+]
