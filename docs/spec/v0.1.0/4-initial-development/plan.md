@@ -521,6 +521,12 @@ M03 Prompt 澄清只读游标、结果总集合及 closing 当前评分后，追
 
 本批最终当前 Prompt 的完整产品回归 **235 / OK / 102.424s**（twentysecond-product-final.log），Ruff、离线锁和 diff 检查通过。M03 / M04 合成验收根没有仍在运行的任务；原失败和取消均保留，不自动重排。当前后续改动只有既有 Prompt 契约澄清及文档 / 状态更新，新提交触发独立 CI；7392422 的成功结果继续只绑定其原 SHA。M01 / M04 / M08 为 implemented，其余模块和整体保持未完成。
 
+## 2026-10-21 第二十三批：3be3467 的远端验证回读
+
+北京时间 00:01 续接检查，分支仍为 codex/4-initial-development，工作区干净，PR #6 为 OPEN / draft，head 为 `3be34675fbcfcbb74aaf8c94f0b4be655d207a1d`。已读取 [PR CI 39452974649](https://github.com/Spokey5243/DistillAI/actions/runs/39452974649) 的元信息和完整日志：pull_request / attempt 1 / PR 6 / success；base `fa13b0bc346ace5e54d94806caedd7bf40220bf0`，实际 tested merge `9481ac54f43307393c78f3dd04a5805ed55e70ca`。产品 **235 tests / OK，145.534s**，Chromium **5 tests / OK，19.687s**，Push Guard **16 tests / OK，42.253s**，采集、锁安装与 Ruff 全部成功。另一个 push 事件的 skipped 检查不作通过证据。日志在忽略目录 `twentythird-ci-3be3467.log`，随后再次读取 PR head，确认未变化。
+
+本批仅同步验证证据，不更改生产代码、Design、模块状态或勾选剩余验收项。M03 / M06 模型输出决策、M05 集中语义审阅与真实 Desktop G2 条件未变化；探针根未出现新事件。当前在真实休眠允许的北京时间 02:00–08:00 之外，不触发休眠，也不等待窗口。heartbeat 仍 ACTIVE，Goal 接口仍 paused，未自行改写或新建 Goal；现有续接授权继续有效。本记录之后的文档提交与对应 CI 应另行绑定其 SHA，不能把本次 success 直接归给新 head。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）
