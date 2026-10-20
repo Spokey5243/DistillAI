@@ -527,6 +527,14 @@ M03 Prompt 澄清只读游标、结果总集合及 closing 当前评分后，追
 
 本批仅同步验证证据，不更改生产代码、Design、模块状态或勾选剩余验收项。M03 / M06 模型输出决策、M05 集中语义审阅与真实 Desktop G2 条件未变化；探针根未出现新事件。当前在真实休眠允许的北京时间 02:00–08:00 之外，不触发休眠，也不等待窗口。heartbeat 仍 ACTIVE，Goal 接口仍 paused，未自行改写或新建 Goal；现有续接授权继续有效。本记录之后的文档提交与对应 CI 应另行绑定其 SHA，不能把本次 success 直接归给新 head。
 
+## 2026-10-21 第二十四批：物理休眠的窗口外准备
+
+北京时间 01:03 核对仍为 9696bc34025a14b295704755e78a06c9bb003670，原工作区干净；[该 head 的 CI 39454004268](https://github.com/Spokey5243/DistillAI/actions/runs/39454004268) 成功，pull_request / PR 6 / attempt 1，base fa13b0bc346ace5e54d94806caedd7bf40220bf0、tested merge bddc61e18fd12141f3e3e4f12c7eda627f196fce；产品 235 项 / 134.978s、浏览器 5 项 / 18.652s、Guard 16 项 / 38.944s，日志 `twentythird-ci-9696bc3.log`。生产内容相对上一批未变，不再仅为成功 CI 新建一轮代码改动。
+
+本批准备一次性 M03 物理验收，资产在忽略目录 `probe_physical_sleep.py`、`physical-sleep-acceptance.md` 和 `physical-sleep-report.json`，不进入永久测试。复用现有 Runtime / SQLite / service_lifespan / APScheduler 与生命周期 fixture，合成数据根内保留真实当前终止 UTC + 30 分钟；运行时只登记 closing、不执行模型。当前通过 S3 能力 / AC 电源及既有 AC 唤醒策略核对、shutdown privilege 存在、绝对 UTC 唤醒定时器创建并立即取消，以及窗口边界自检 / 实际 run 窗口外拒绝和 Ruff；没有创建 attempt、没有触发休眠，没有改电源设置 / 启用 S4 / 新建服务或计划任务。
+
+核对 Microsoft SetWaitableTimer / SetSuspendState：Windows 8+ 相对 timer 不计低功耗时间，采用绝对 UTC FILETIME / fResume；不据 API 可用声称硬件实际唤醒。后续仅在用户 02:00–08:00 授权窗口内实施，脚本 07:15 后拒绝开始以留恢复 / 清理余量；设置 32 分钟唤醒、一次 sleep，核对原 PID / 截止、唯一 closing、零调用与系统 Kernel-Power 42 / 107 配对。已有 attempt 不自动重试，失败保留事实；finally 关闭 timer / 调度器 / Runtime、恢复进程权限并删除合成根。M03-R1.3 / R2.4 均不勾选，Desktop 与模型输出决策保持。具体文档链接与待执行命令保留于该忽略目录的 runbook，下一窗口重新预检，硬件实际按时唤醒不由本次准备保证。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）
