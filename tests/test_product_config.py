@@ -109,7 +109,7 @@ class ConfigTests(unittest.TestCase):
         workspace = self.root / "workspace"
         workspace.mkdir()
         result = self.config.update(1, {"workspace": {"paths": [str(workspace)]}})
-        self.assertEqual(result["values"]["workspace"]["paths"], [str(workspace)])
+        self.assertEqual([Path(path).resolve() for path in result["values"]["workspace"]["paths"]], [workspace.resolve()])
 
     def test_dot_segments_do_not_authorize_private_runtime_directory(self):
         workspace = self.root / "workspace"

@@ -29,7 +29,7 @@ SQLite 增补：Create `src/distillai/state.py`（只封装具体控制状态 SQ
 - [x] **R1.3a 先证明阻塞等待可退出。** 在 R1.2 业务接入前，用实际 Windows 父子进程分别验证 accept 前子进程未连接、连接后不完成认证、认证后不回复、读写中取消和父进程死亡。连接 / 认证分别设置有限截止；消息等待按现有调用截止或取消信号结束，不新增模型总执行时限。连接由明确的通信执行单元持有，控制层负责发出取消、停止 Job 并确认等待线程退出；逐项记录所用公开接口、关闭 / 中止顺序和有界回收时间。poll / wait 只用于已建立连接的可读等待，不能当作 accept / 认证超时；关闭句柄能否唤醒实际阻塞操作必须由探针证明，不能仅取消 AnyIO 等待或遗弃后台线程。任一阶段不能有界退出则不进入 R1.2，也不把临时换成自写 RPC 当作完成。
 - [x] **R1.4 保留数据和失败契约。** 连接配置只从固定私有配置经管道私有 bootstrap 交 SDK，不把 key 加入持久 `task.inputs`、`visible_inputs` / Prompt / 历史；请求快照沿现有脱敏方法，移除代理时把仍需使用的 `_history_request` 迁到执行适配处，保留真实 Prompt / 工具 / 请求 / 最终结果版本。额度许可必须先落盘再回复；父进程死亡 / EOF / 取消终止等待，Job 确认停止才回收名额。连接前可确认未发出用同 attempt_id 退额，其他未知失败保守计数；验证恢复沿原 Runtime，不用 finally 统一退额。
 - [x] **R1.5 删除旧代理路径。** 直连探针通过后删除 `BackendServer.model_base`、`_Handler._model`、模型 `/internal/tasks/{id}/v1/*`、`_program_tool` HTTP 客户端和任务 proxy token 逻辑，仅在确无剩余调用者后删除相关方法。程序评分 / 读取审计 / ID / 来源工具改用管道上的原业务函数。全仓查调用者，不能留下“新 SDK → 本机代理”或第二套模型传输。
-- [ ] **R1.6 验证实际 AIAgent。** 同一真实执行器验证文件 / Shell 工具、评分往返、只读 query、无工具筛选；分别造 503 后恢复、客户端重建、断流、连接拒绝、重启续额、16 次完成和 17 次拒发。合成 provider 记录真实到达请求数，与任务账本核对；额外辅助生成无法覆盖就保持关闭。取得一次获准实际模型的流式工具往返，只报机械通过 / 语义未验的真实范围。
+- [x] **R1.6 验证实际 AIAgent。** 同一真实执行器验证文件 / Shell 工具、评分往返、只读 query、无工具筛选；分别造 503 后恢复、客户端重建、断流、连接拒绝、重启续额、16 次完成和 17 次拒发。合成 provider 记录真实到达请求数，与任务账本核对；额外辅助生成无法覆盖就保持关闭。取得一次获准实际模型的流式工具往返，只报机械通过 / 语义未验的真实范围。
 
 ## M01-R2：FastAPI / Uvicorn 替换手写 HTTP
 
@@ -188,6 +188,10 @@ MCP local_request 直接采用启动模块已有 INSTANCE_RECORD / INSTANCE_HEAL
 ## 2026-10-20 第十九批：周期停机续接入口同步
 
 共用 Runtime.retry 仅放行因 runtime_stopping 取消且已停止的周期外扩；重新核对当前路径权限与原输入，通过才恢复授权 / 清原因并排队。其他取消仍拒绝，原 task_id、配置 / Prompt / 固定输入、审计与已用次数保持。新增权限及取消类型回归、M06 实际调度 / SQLite 重启验收通过；完整产品 234 项通过，详见总 Plan 第十九批。M01 的实际模型、独立启动与 CI 仍按各自证据验收。
+
+## 2026-10-20 第二十批：真实模型与本机验收
+
+用户在独立验收 Web 保存配置 v2（chat_completions / deepseek-flash），当前 PM / Hermes / AF_PIPE 直连真实模型完成 read_source 工具往返：实际 2 次生成、stream=true、读取审计及最终 JSON 通过，证据 twentieth-real-model.json / .log。结合既有实际执行器合成边界，R1.6 完成；不使用旧代理证据替代当前直连。关闭启动 PowerShell 后，同一后台 PID / instance_id 继续 ready，真实 FastMCP stdio 两工具连接后退出仍存活，且不处于 Windows Job，最后实际 Stop 成功并保留配置。
 
 <a id="historical-execution"></a>
 

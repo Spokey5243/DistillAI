@@ -153,7 +153,7 @@ class CognitionTests(unittest.TestCase):
         for commit in ("first", "supplement"):
             task = cognition.register_analysis(runtime, [episode_ref], {"knowledge_refs": [], "relation_refs": [], "reason": "empty M04"}, "episode evidence", commit)
             runtime.dispatch()
-            completed = runtime.wait(task["id"])
+            completed = runtime.wait(task["id"], timeout=30)
             self.assertEqual(completed["status"], "succeeded", completed["error"])
         record = json.loads((folder / (A + ".json")).read_text(encoding="utf-8"))
         self.assertEqual(observations[0], observations[1])

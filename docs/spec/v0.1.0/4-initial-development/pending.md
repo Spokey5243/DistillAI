@@ -9,13 +9,13 @@
 用户本次明确批准 M06 推荐恢复方案、真实 Desktop 合成实测和普通 PowerShell 独立后台验收；物理 Windows 休眠测试仅允许北京时间每天 02:00–08:00，恢复与清理应在窗口内完成。明确授权本任务分支 Push 与创建 PR，发布 Review、Merge、Tag / Release 仍需各自授权。现有半小时 heartbeat 已更新这些条件，不再以“缺少这些批准”阻塞。本轮 Goal 查询为 paused；Agent 未自行恢复 / 新建 Goal，继续当前用户明确授权的可实施工作。
 
 - [x] M06 已按获准方案完成原任务显式续接，M06-R2.1 完成，统一 Design 修订 4；完整产品 234 项与 Chromium 5 项通过，详见总 Plan 第十九批。
-- [ ] 模型配置：普通 PowerShell 运行 `& 'E:\JourneyIntoAI\DL_and_LLM\projects\DistillAI\.artifacts\open-acceptance-web.ps1'`，在本地 Web 的“配置 → 模型服务”填写 API 地址、模型名与密钥，参数暂留 `{}`，保存后告知。验收根为 `C:\Users\11954\.distillAI-acceptance`。私有版本由程序写入 `config/<version>.json` 并由 SQLite 选定，不能手工编辑版本文件；不把 key 发到聊天。该命令 Check 已通过，尚无后台实例。
-- [ ] 普通终端独立后台：已获准；上一步从普通 PowerShell 启动 Web 会启动后台。随后关闭发起终端，由 Agent Check 同一实例，再做 MCP 退出 / Check / Stop。当前工具仍属于 Codex / MCP Job 树，不能靠授权把本执行器冒充独立父进程；不放宽 Job、不建系统服务 / 计划任务。
+- [x] 模型配置：用户已保存 v2，真实直连流式 read_source 往返 2 次通过；M01-R1.6 / M05-R2.1 完成，七组语义执行和失败定位继续。原填写方法：普通 PowerShell 运行 `& 'E:\JourneyIntoAI\DL_and_LLM\projects\DistillAI\.artifacts\open-acceptance-web.ps1'`，在本地 Web 的“配置 → 模型服务”填写 API 地址、模型名与密钥，参数暂留 `{}`，保存后告知。验收根为 `C:\Users\11954\.distillAI-acceptance`。私有版本由程序写入 `config/<version>.json` 并由 SQLite 选定，不能手工编辑版本文件；不把 key 发到聊天。该命令 Check 已通过；用户实际启动后完成了独立后台验收，当前已按计划 Stop，配置保留。
+- [x] 普通终端独立后台：已完成关闭发起终端后的原 PID / 实例存活、非 Job、MCP 连接退出后仍存活和最终 Stop；配置保留。下文保留原操作要求：上一步从普通 PowerShell 启动 Web 会启动后台。随后关闭发起终端，由 Agent Check 同一实例，再做 MCP 退出 / Check / Stop。当前工具仍属于 Codex / MCP Job 树，不能靠授权把本执行器冒充独立父进程；不放宽 Job、不建系统服务 / 计划任务。
 - [ ] Desktop G2：已获准；本机工具没有原生 Desktop 控制，仍需用户在真实界面安装 / 信任 Personal marketplace 的 DistillAI G2 Probe，并在独立合成聊天触发 compact / 停止 / 归档。具体操作已准备于忽略目录 `.artifacts/initial-development/G2-desktop.md`，插件 C:\Users\11954\plugins\distillai-g2-probe。取得真实事件后由 Agent 继续 M03 / M07 适配，不能把安装批准当触发证据。
 - [ ] 物理休眠：已获准且无需再询问；半小时检查仅在北京时间 02:00–08:00 内准备就绪时触发一次验收，窗口外只准备。本轮北京时间 09:43 未执行。已验证的进程 / 事件循环暂停不充当休眠证据。
-- [ ] 远端验收：Push 与创建 PR 已获准，Agent 在本地验证和文档同步后执行，绑定当前 SHA / origin / 实际默认分支；若落后须按仓库规则另行确认。PR 保持草稿直到真实模型 / Desktop 等验收齐备，CI 结果据实际 run 记录。
+- [ ] 远端验收：已 Push 并创建草稿 [PR #6](https://github.com/Spokey5243/DistillAI/pull/6)。首轮 CI 失败已定位为短 / 长路径比较及单例认知测试等待，已修正并待新 head 验证；不重跑旧 SHA 掩盖失败。未发布 Review 或 Merge。
 
-下方未决选择、缺少远端授权及 blocked 记录仅描述 2026-10-18 当时状态，由本节新授权及执行记录取代。剩余实际模型 / Desktop / 独立后台 / 物理休眠的执行证据仍不齐，不标整体完成。
+下方未决选择、缺少远端授权及 blocked 记录仅描述 2026-10-18 当时状态，由本节新授权及执行记录取代。实际模型流式往返与普通终端独立后台已通过；剩余真实模型语义 / Desktop / 物理休眠和新 head CI 的证据仍不齐，不标整体完成。
 
 ## 2026-10-18 状态（历史）
 

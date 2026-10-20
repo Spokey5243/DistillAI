@@ -483,6 +483,16 @@ SessionStart / UserPromptSubmit 的合成调用不生成正文队列；缺失 tr
 
 普通 PowerShell 配置 / 启动命令已准备在 .artifacts/open-acceptance-web.ps1，实际 Check 通过固定 Hermes SHA 与 PM 环境，instance=null。验收数据根 C:\Users\11954\.distillAI-acceptance，用户可在 Web 的配置 / 模型服务填写 endpoint、deepseek-flash 与密钥，保存后由 Agent 使用当前直连 SDK 验收；不索取聊天密钥，不手工改私有版本 JSON。独立后台仍需从 Codex Job 树之外实际启动，Desktop 信任 / compact / 中断仍需真实 UI，批准不等于这些验收已发生。当前检查时为北京时间 09:43，窗口外未触发休眠。后续依 pending 继续，远端 CI 结果另据实际 SHA 登记。
 
+## 2026-10-20 第二十批：真实模型往返、独立后台与 CI 修正
+
+用户在独立 Web 保存 OpenAI 兼容 chat_completions / deepseek-flash 配置 v2。当前 PM / Hermes / AF_PIPE 直连真实模型，read_source 流式工具往返实际 2 次生成、请求 stream=true、来源读取审计和最终 JSON 通过，M01-R1.6 完成。临时探针最初漏建 knowledge 目录，在模型请求前失败；补齐临时目录后通过，没有修改产品。七组原合成材料 / 不可变版本 / Prompt hash 再次核对，最新模型配置已冻结，M05-R2.1 完成。真实 M04 → M05 顺序执行中，部分 M05 实际输出存在结构校验和预算失败，R2.2 不提前通过；原失败任务、调用次数和生成记录保留。
+
+用户确认已关闭启动用 PowerShell。原后台 instance_id=4ae6621ae8d447d486468185e3380e41 / pid=43304 仍 ready，原生 IsProcessInJob=false；真实 FastMCP stdio 连接，列出 query_context / submit_feedback，连接退出后同一实例仍 ready。临时探针初次预期了缩写 query，按实际注册名修正后通过，不改产品工具名。最后实际 Stop / 无存活实例通过，配置保留；证据 twentieth-independent-backend.json / .log。不能据此声称 Codex Desktop 工具全名前缀或 Hook 已验。
+
+已 Push 2ba9740ab0a06b0bd742e8368a72731532bc3bef 并创建草稿 [PR #6](https://github.com/Spokey5243/DistillAI/pull/6)，已附加到本聊天；没有发布 Review 或 Merge。首轮 [CI run 39355377660](https://github.com/Spokey5243/DistillAI/actions/runs/39355377660) 对此 head 的合并结果执行：采集 / 锁与 Chromium 准备 / Ruff / Push Guard 通过，产品 234 项有 1 failure / 1 error，浏览器跳过，不能声称 CI 通过。runner TEMP 的 RUNNER~1 被安全路径处理展开为 runneradmin，测试误比较原始字符串；改为标准库解析后的路径等价，仍严格校验唯一目录。认知任务实际在启动 8.025 秒后成功，测试默认 5 秒超时；仅将该行为测试等待设为 30 秒，保留成功 / 来源去重 / 内容不变断言，不改生产等待或权限。10 项配置和 7 项认知测试通过；新提交触发新 CI，不 rerun 旧 SHA 掩盖失败，A1.1 仍待实际成功检查。
+
+只读 powercfg 确认 S3 可用、S4 未启用，交流电唤醒定时器启用、直流禁用；没有修改电源设置或在北京时间 02:00–08:00 外触发睡眠。真实 Desktop 信任 / compact / 中断仍需界面操作，已有授权无需重复询问。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）
