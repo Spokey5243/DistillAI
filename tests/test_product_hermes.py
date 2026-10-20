@@ -1,5 +1,6 @@
 """SDK transport retains durable request budgets, connection failures and private history."""
 from pathlib import Path
+import json
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -7,12 +8,23 @@ from unittest.mock import patch
 import httpx
 
 from distillai.config import Config
-from distillai.hermes import _meter_client, _operation, HermesError
+from distillai.hermes import _meter_client, _model_result, _operation, HermesError
 from distillai.runtime import Runtime
 from distillai.storage import Store
 
 
 class HermesTransportTests(unittest.TestCase):
+    def test_model_result_accepts_one_json_fence_and_rejects_prose_or_trailing_payloads(self):
+        expected = {"knowledge_refs": [], "relation_refs": [], "reason": "no change"}
+        body = json.dumps(expected)
+        for text in (body, "```json\n" + body + "\n```", "```\r\n" + body + "\r\n```"):
+            with self.subTest(text=text):
+                self.assertEqual(_model_result(text), expected)
+        for text in ("explanation " + body, body + body, "```json\n" + body + "\n``` extra",
+                     "```python\n" + body + "\n```", "```json\nnot JSON\n```"):
+            with self.subTest(text=text), self.assertRaises(json.JSONDecodeError):
+                _model_result(text)
+
     def setUp(self):
         temporary = self.enterContext(tempfile.TemporaryDirectory())
         self.store = Store(Path(temporary) / "data")

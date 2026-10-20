@@ -493,6 +493,18 @@ SessionStart / UserPromptSubmit 的合成调用不生成正文队列；缺失 tr
 
 只读 powercfg 确认 S3 可用、S4 未启用，交流电唤醒定时器启用、直流禁用；没有修改电源设置或在北京时间 02:00–08:00 外触发睡眠。真实 Desktop 信任 / compact / 中断仍需界面操作，已有授权无需重复询问。
 
+## 2026-10-20 第二十一批：恢复执行、严格结果适配与真实语义验收
+
+用户明确恢复工作，半小时 heartbeat 已恢复 ACTIVE，沿用原授权与休眠窗口。Goal 工具仍返回 paused，接口不支持 Agent 将其改成 active；不新建替代 Goal，不以其旧状态阻止本次用户已明确授权的实施。保留四个暂停前修复文件与既有全部验收记录。
+
+已核对 [PR #6 的 CI run 39356494487](https://github.com/Spokey5243/DistillAI/actions/runs/39356494487)：head `17a23c8d986870f1bfd4a5bf73f3b470438e6ee5`，base `fa13b0bc346ace5e54d94806caedd7bf40220bf0`，实际 tested merge `868d00015df767b43c273b4857f2966db4a1631a`，Windows tests SUCCESS。日志确认产品 **234 / OK / 201.452s**、浏览器 **5 / OK / 20.238s**、Push Guard **16 / OK / 67.503s**，采集 / 锁 / Ruff 同时通过。该证据只属于上述提交，当前真实模型修复尚未纳入远端检查，A1.1 待最终 head 验证后完成。
+
+真实模型首轮共 82 次，失败原样保留。修复严格单 JSON 围栏解析，M05 冻结现有 Pydantic schema 并明确实际输入与字段归属；统一 Design 已同步，未增加模型重试、依赖或放宽结构。永久回归保护单围栏接收与说明文字 / 尾随 / 坏 JSON 拒绝，先红后绿；产品完整 **235 / OK / 99.810s**（twentyfirst-product-final.log），Hermes **6 / OK**、认知 **7 / OK**，改动文件 Ruff 通过。七组真实模型及 M06 主要来源对照正在独立数据根续接，实际语义结论另补；Desktop 与物理休眠不因本地通过而勾选。
+
+本批最终产品完整 **235 / OK / 103.496s**（twentyfirst-product-with-expansion.log），M05 **7 / OK / 0.977s**、Hermes **6 / OK / 0.382s**、M06 **14 / OK / 2.689s**，全 src / tests Ruff 与离线锁通过。生产修改限严格单围栏入口、首次冻结的现有 M05 / M06 schema、原字段归属提示；不改协议、预算或自动重试。七组补测先用 88 次完成：M04 全部成功，M05 五组成功、两组拒绝；新反证据 / 正确依赖顺序的分组任务再分别以 9 / 5 次成功。旧失败 / 输入 / Prompt / 次数保留；一次提前冻结的补测副本另耗尽 16 次，失败原样保留。原七组来源 hash 未变；[实际语义审阅](semantic-review.md)给出定性结论，M05-R2.2 留待用户集中审阅，R2.3 仍待 Desktop。
+
+M06 实际主要来源对照暴露 open_questions 字符串错误，7 次生成被严格拒绝；补现有 schema 后另一明确请求前八次搜索 / 提取为 HTTP 429，第九次取得主要来源，但 300 秒期限清理时已用 16 次且未结束，保留 cancelled / runtime_stopping，不发布、不交 M04 / M07。R2.3 未完成，后续先核对上游条件，不清预算或反复空转。详见 twentyfirst-real-expansion.json、twentyfirst-expansion-rate-limit.json。G2 无新事件证据；当前北京时间晚间不在物理休眠窗口，未触发休眠。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

@@ -438,6 +438,10 @@ def execution_task(runtime, task):
         saved = runtime.task(task["id"])
         if "assessment_at" not in prepared["inputs"]:
             prepared["inputs"]["assessment_at"] = now()
+            prepared["inputs"]["record_schemas"] = {
+                "observations": OBSERVATIONS.json_schema(), "inline_hypothesis": INLINE_HYPOTHESIS.json_schema(),
+                "shared_hypothesis": SHARED_HYPOTHESIS.json_schema(), "cognition": JUDGMENT.json_schema(),
+                "result": COGNITION_RESULT.json_schema()}
             saved["execution_input_version"] = runtime.store.put_version(json.dumps(prepared["inputs"], ensure_ascii=False, allow_nan=False).encode("utf-8"))
         saved.pop("cognition_prepared", None)
         reset_reanalysis_workspace(runtime, saved)

@@ -5,6 +5,7 @@
 逐条核查来源、条件、反例和冲突。只找到 e-a 的依据时，e-b 保留 unverified；不能用整体摘要把两个联系都当作成立。正文截断和读取失败明确保留缺口。
 只编辑 expansion_template 对应 expansions/<id>.json，保留 id / input_refs；不要直接维护正式知识或用户理解。
 结果有 question、reason、claims、proposed_connections、open_questions。每项至少 statement、source_refs；claims 和 proposed_connections 还需 status=supported/conflicting/unverified 及 verification。可附 conditions、value 的定性理由。
+inputs.record_schemas 来自程序实际校验模型；open_questions 的每项也是 {statement,source_refs} 对象，不能只写字符串。缺少可引用依据时 source_refs=[]，不补造来源。
 连接 source / target 为已有 {id,version}，或尚待维护的 {candidate:"具体概念名称"}。source_refs 只用本任务 fetch_page 实际返回的 external 引用。没有依据时设 unverified 并用空来源，不补造出处。
 依据足够即正常结束；允许提交有据部分与缺口，也允许无值得维护结果。末次生成可完成，若仍需超额生成则整个未提交结果失败。
 最终仅返回 JSON：expansion_refs=[{id}]、reason；无值得维护结果时 expansion_refs=[]。版本由程序补齐，正式知识交后继 M04；外部内容不构成用户已理解证据。

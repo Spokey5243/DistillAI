@@ -2,6 +2,7 @@
 from contextlib import redirect_stderr, redirect_stdout, contextmanager, ExitStack
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -41,6 +42,13 @@ class HermesError(RuntimeError):
 
 
 BUILTIN_TOOLS = {"read_file", "write_file", "patch", "search_files", "terminal", "process_manage"}
+
+
+def _model_result(text):
+    fenced = re.fullmatch(r"```(?:json)?\r?\n(.*)\r?\n```", text.strip(), re.DOTALL)
+    return json.loads(fenced[1] if fenced else text)
+
+
 DiagnosticCode = Annotated[str, Field(pattern=r"^[A-Za-z][A-Za-z0-9_]{0,63}$")]
 
 
@@ -472,7 +480,7 @@ def task_child():
             if response.get("error") or not response.get("completed"):
                 raise HermesError("AIAgent returned an incomplete result")
             stage = "parse_result"
-            result = json.loads(response["final_response"])
+            result = _model_result(response["final_response"])
         except Exception as exc:
             error = {"code": type(exc).__name__, "stage": stage}
             if stage in {"initialize", "tool_manifest"}:

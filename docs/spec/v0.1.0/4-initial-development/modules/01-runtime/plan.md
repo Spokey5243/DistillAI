@@ -193,6 +193,10 @@ MCP local_request 直接采用启动模块已有 INSTANCE_RECORD / INSTANCE_HEAL
 
 用户在独立验收 Web 保存配置 v2（chat_completions / deepseek-flash），当前 PM / Hermes / AF_PIPE 直连真实模型完成 read_source 工具往返：实际 2 次生成、stream=true、读取审计及最终 JSON 通过，证据 twentieth-real-model.json / .log。结合既有实际执行器合成边界，R1.6 完成；不使用旧代理证据替代当前直连。关闭启动 PowerShell 后，同一后台 PID / instance_id 继续 ready，真实 FastMCP stdio 两工具连接后退出仍存活，且不处于 Windows Job，最后实际 Stop 成功并保留配置。
 
+## 2026-10-20 第二十一批：严格结果解析与 CI 证据
+
+真实模型返回单个完整 JSON 围栏时，以标准库完整匹配去围栏后执行原 json.loads；裸 JSON、领域校验和错误拒绝保持。新永久用例先复现围栏失败，再验证合法围栏 / CRLF 及说明文字、多个 JSON、尾随载荷、其他语言和坏正文拒绝。当前全产品 235 项通过（103.496s），Hermes 6 项、认知 7 项及外扩 14 项通过，Ruff / 离线锁通过。17a23c8 对应 PR tested merge 868d000 的 Windows CI 已通过；当前新修复需新提交 CI，R3.4 暂不以旧 head 提前完成。普通终端独立后台证据仍有效，Desktop 冷启动另待 G2。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

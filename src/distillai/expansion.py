@@ -290,6 +290,7 @@ def execution_task(runtime, task):
                         "claims": [], "proposed_connections": [], "open_questions": []}
             inputs = {**task["inputs"], "records": catalog, "sources": list(sources.values()),
                       "source_refs": [item["ref"] for item in sources.values()], "expansion_template": template,
+                      "record_schemas": {"expansion": EXPANSION_RECORD.json_schema(), "result": EXPANSION_RESULT.json_schema()},
                       "prior_expansions": [json.loads(runtime.store.read_version(item["version"])) for item in existing.values()]}
             if task["inputs"].get("user_request_ref"):
                 inputs["sources"].append(read_source(runtime.store.home, task["inputs"]["user_request_ref"]))

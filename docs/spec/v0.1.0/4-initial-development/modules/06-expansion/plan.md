@@ -84,6 +84,12 @@ uv run --locked python -m unittest discover -s tests -p 'test_product_expansion.
 
 真实 Chromium 验证仅受限任务显示重试、三类其他取消隐藏，点击实际 API 返回 202、ID / 输入 / 配置 / 次数保持。探针最初误将相同输入的任务登记视为不同案例，命中既有去重；修正为不同合成输入并等待当前任务 ID 后通过，未修改产品去重规则。完整产品 234 tests / OK（101.281 秒）、永久 Chromium 5 tests / OK（18.501 秒）；模型响应 / Desktop 语义未验，R2.3 保留。
 
+## 2026-10-20 第二十一批：真实模型对象格式与上游限流
+
+真实 AIAgent 首次对照 7 次生成，实际 Search / Extract 取得 SciPy rel_entr 主要来源，但 open_questions 字符串不符既有对象模型，被校验拒绝且没有发布。首次冻结输入时直接附现有 ExpansionRecord / ExpansionResult schema，并明确对象格式，不放宽校验、不另造 schema。14 项外扩回归与完整产品 235 项通过。
+
+后续以 SciPy entropy 原文做 e-a / e-b 对照，前八次 keyless 工具调用均为 HTTP 429，第九次提取得到实际来源；300 秒探针到期清理时累计 16 次生成，任务保留 cancelled / runtime_stopping，没有发布或登记下游。原失败 7 次与新任务 16 次分别保留，不清预算，不把该用户请求任务套入周期恢复例外。后续先核对限流条件，安排明确的新验收；本轮不继续空转请求。详见[语义审阅](../../semantic-review.md)与 twentyfirst-expansion-rate-limit.json，R2.3 仍未完成。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

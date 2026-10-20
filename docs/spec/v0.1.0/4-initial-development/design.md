@@ -1054,3 +1054,11 @@ MCP 复用后台时直接采用启动模块已有 INSTANCE_RECORD / INSTANCE_HEA
 ### 2026-10-20：M06 在途停机显式续接（用户批准，修订 4）
 
 用户选择原任务显式恢复，未选择清 pending / 新建周期任务。共用 Runtime.retry 在内存候选上重新核对权限与原输入，失败不改持久取消状态；成功才恢复排队，保留原配置、来源、Prompt、调用记录和预算。处理历史显示同一受限入口，不将普通用户取消或用户要求的独立重探纳入恢复。真实 APScheduler / SQLite 重启探针验证停机保留 1 次、两次周期回调不自动恢复、显式 retry 后以同一任务完成并累计 2 次、提交才推进覆盖，后续不重复登记；模型请求为 0。永久回归保护原输入 / 次数、过时输入、权限撤销和其他取消拒绝，浏览器实测受限按钮及实际 202。详见总 Plan 第十九批，真实模型与 Desktop 不因此完成。
+
+### 2026-10-20：真实模型结果格式与认知输入澄清（Agent 闭环）
+
+真实模型返回完整单个 JSON 代码围栏时，任务结果入口只去掉这一层围栏，再执行原严格 JSON 解析和领域校验；裸 JSON 继续支持，说明文字、尾随载荷、多份 JSON、其他语言围栏及坏 JSON 仍拒绝。核对固定 Hermes 的 JSON 辅助函数后，没有满足此严格边界的现成实现，采用标准库正则完整匹配与 json.loads，不增加修复器、模型重试或新依赖。
+
+M05 首次冻结 execution_input_version 时，连同 assessment_at 保存由现有 Pydantic TypeAdapter 生成的观察、假设、判断与结果 schema，不维护第二份字段定义；已冻结任务不换输入。Prompt 明确优先分析本任务冻结的 episodes / records / sources，缺失历史保持未知，不采用其他任务未提交的副本；同步说明 episode_id、needed_evidence 与 changes 的既有字段归属。未放宽字段校验、预算、来源或发布规则。属于既定严格结构和证据边界的遗漏闭环，material_revision 保持 4；M01 / M05 / 总 Plan 补当前验证记录，验收标准与实施顺序不变。
+
+后续真实对照同样暴露 M06 open_questions 的对象格式遗漏，首次冻结输入时直接附现有 ExpansionRecord / ExpansionResult schema；Prompt 明确每项为带 statement / source_refs 的对象。M05 再明确会话观察需实际 episode_id、只有独立 user_submission 可省略，以及最终 hypothesis_refs 只列实际修改的外部假设文件，不列知识内假设。均为现有归属和校验契约的提示澄清，旧失败与冻结输入保持，不新增自动修复或补额；material_revision 仍为 4，Plan 仅补证据与待验状态。
