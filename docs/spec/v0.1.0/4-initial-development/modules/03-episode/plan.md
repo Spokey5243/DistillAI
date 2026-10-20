@@ -31,6 +31,8 @@ decision_mode: user-approved
 
 ## 验证、测试必要性和依赖
 
+2026-10-21 一次性物理验收：北京时间 04:05:10–04:37:28，系统 Power-Troubleshooter 79371 的 SleepTime / WakeTime 证明真实 S3 持续 1937.758s。进程 PID 45256 未变，原终止 + 30 分钟截止 04:35:10 保留；真实 DateTrigger 在恢复后执行一次并登记唯一 closing，零模型调用；再次唤醒扫描不重复。定时器 / 调度器 / Runtime / 临时合成根已在窗口内清理，未更改电源方案或启用 S4。该项完成物理跨截止范围，不证明 Desktop 的 Stop / compact / 迟到正文及分段语义，因此 R1.3 / R2.4 仍未勾选。具体系统时间、报告与清理核对见[总 Plan 第二十六批](../../plan.md#2026-10-21-第二十六批真实-s3-跨截止与恢复验收)。
+
 ```powershell
 $env:PYTHONPATH = 'src'
 uv run --locked python -m unittest discover -s tests -p 'test_product_episode.py' -v

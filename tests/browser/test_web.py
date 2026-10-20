@@ -103,7 +103,7 @@ class BrowserTests(unittest.TestCase):
         self.alpha(second)
         self.edit(first, "Committed first", "First correction")
         first.get_by_role("button", name="提交修改", exact=True).click()
-        expect(first.get_by_text("修改已提交。", exact=False)).to_be_visible()
+        expect(first.get_by_text("修改已提交。", exact=False)).to_be_visible(timeout=30000)
         self.edit(second, "Keep my draft", "Keep my reason")
         with second.expect_response(lambda response: response.url.endswith("/v1/knowledge-edits") and response.status == 409):
             second.get_by_role("button", name="提交修改", exact=True).click()
@@ -124,7 +124,7 @@ class BrowserTests(unittest.TestCase):
         expect(page.get_by_role("button", name="提交修改", exact=True)).to_be_enabled()
         page.unroute("**/v1/knowledge-edits")
         page.get_by_role("button", name="提交修改", exact=True).click()
-        expect(page.get_by_text("修改已提交。", exact=False)).to_be_visible()
+        expect(page.get_by_text("修改已提交。", exact=False)).to_be_visible(timeout=30000)
 
     def test_late_detail_cannot_replace_current_record(self):
         page = self.page()
@@ -152,7 +152,7 @@ class BrowserTests(unittest.TestCase):
         self.edit(page, "Typed while saving", "New reason")
         self.assertEqual(len(held), 1)
         held[0].fulfill(response=held[0].fetch())
-        expect(page.get_by_text("修改已提交。", exact=False)).to_be_visible()
+        expect(page.get_by_text("修改已提交。", exact=False)).to_be_visible(timeout=30000)
         page.get_by_role("button", name="读取已保存记录", exact=True).click()
         expect(page.get_by_label("正文摘要", exact=True)).to_have_value("Typed while saving")
         expect(page.get_by_label("修改原因", exact=True)).to_have_value("New reason")

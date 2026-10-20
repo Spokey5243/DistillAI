@@ -1,5 +1,7 @@
 # DistillAI
 
+2026-10-21：已完成一次授权窗口内的真实 S3 睡眠 / 唤醒，跨过原 30 分钟截止后只登记一次 closing，并完成清理。慢持久化 / 任务响应下的测试等待边界已修正；本地产品 236 项、Chromium 5 项通过，后续提交的远端 CI 单独核对。Desktop 闭环和模型语义 / 输出可靠性仍有未过项，详见[当前待办](docs/spec/v0.1.0/4-initial-development/pending.md)与[执行记录](docs/spec/v0.1.0/4-initial-development/plan.md)。以下日期段落保留当时状态。
+
 项目已有初版实现。2026-10-16 按用户要求[重写总 Plan 与八模块 Plan](docs/spec/v0.1.0/4-initial-development/plan.md)：复用成熟依赖、移除模型 HTTP 转发、保留领域规则并补齐真实验收。2026-10-17 用户已批准新稿并授权持续实施；统一 Design 当前为修订 4，当前进度与证据见 Plan。
 
 当前计划已按用户意见纳入 SQLite 控制状态事务、Playwright 浏览器回归和 Ruff 静态检查，具体见总 Plan、M01-R6 与 M08-R3。SQLite 控制状态与离线迁移工具已实现并通过合成数据验证；产品依赖与 Chromium 已安装，真实浏览器回归已运行。未迁移真实用户数据。

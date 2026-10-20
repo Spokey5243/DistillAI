@@ -543,6 +543,16 @@ M03 Prompt 澄清只读游标、结果总集合及 closing 当前评分后，追
 
 最终完整产品 **236 tests / OK，104.012s**（`twentyfifth-product.log`），采集 fixture 增加接收 / 接受超时及有界清理后定向 **12 tests / OK，1.869s**（`twentyfifth-capture-final.log`）；Ruff、离线锁和 diff 通过。本批只改验证 fixture，不改产品采集、发布、预算、配置、工作流或 Design，material_revision 保持 4；新 head 的远端证据另核对。物理休眠已在 04:02 重新预检通过但尚未触发；不让运行中的其他验证跨机器睡眠来制造超时。Desktop 与模型输出决策没有新条件。
 
+## 2026-10-21 第二十六批：真实 S3 跨截止与恢复验收
+
+在本任务 b26675334c421da48fb3a95f25aa674c1173f242 上，重新核对 AC 供电、已启用的唤醒策略和 02:00–08:00 授权，运行一次独立合成探针。实际北京时间 04:05:10 开始，原生命周期截止为 04:35:10，绝对 timer 设置 04:37:10，04:37:28 返回；同 PID 45256，真实 APScheduler `episode:synthetic` DateTrigger 仅执行一次，唯一 closing 任务保留原 observed_at / 固定边界且模型调用为 0，再扫描不重复。服务 / Runtime / timer / 权限 / 合成根清理后进程退出，均在授权窗口内。
+
+未只信任脚本 `passed`。Kernel-Power 42 / 107 时间戳显示恢复时钟差异，另读取 Power-Troubleshooter 事件 79371：SleepTime=2026-10-20T20:05:10.9918196Z、WakeTime=2026-10-20T20:37:28.7501799Z，区间 **1937.758s**；TargetState / EffectiveState=4，依 [Microsoft SYSTEM_POWER_STATE](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ne-winnt-system_power_state) 对应 S3。以该独立区间验证真实睡眠跨过原 30 分钟截止。原脚本 / attempt / 报告与系统字段保留在忽略目录 `physical-sleep-*`；未因初始 107 时间差异再让机器睡眠。`powercfg /waketimers` 查询需要管理员权限，未提升或改电源方案；timer handle 随已退出的探针关闭，未创建服务 / 计划任务。此范围为机械调度 / 持久截止，未执行模型、未模拟成 Desktop Stop，因此 M03-R1.3 / R2.4 其余门禁保持。
+
+同轮回读 [b266753 的 CI 39488934386](https://github.com/Spokey5243/DistillAI/actions/runs/39488934386)：base fa13b0bc346ace5e54d94806caedd7bf40220bf0、tested merge 54343ce85a11f0c2ba83ff862ac9b71aab521594。产品 **236 tests / OK，161.140s**、采集 / Guard / 锁 / Ruff 通过，原两处产品 fixture 修正获得远端证据；浏览器两个任务提交断言超出 Playwright 默认 5s，整体 CI 仍 failure，未 rerun。临时真实 Chromium / API 探针将任务状态响应延迟 6s，旧断言稳定 **2 tests / failures=2 / 21.759s**；任务完成断言改用 30s 的有界条件等待后 **2 tests / OK，20.345s**，保留实际 409 / 留输入 / 保存后新输入等行为校验，不修改 UI 或任务执行时限。红 / 绿日志在 `twentyfifth-browser-*`，完整浏览器及后继 head 的 CI 另行记录。
+
+最终完整 Chromium **5 tests / OK，22.059s**（`twentysixth-browser-final.log`），没有新增永久浏览器案例或修改生产文件。仅原三处任务提交完成条件使用 30s 有界等待；UI 的 1500ms 状态轮询、错误与冲突行为保持。统一 Design 验证说明、M03、两个 README、待办与 PR 说明同步；本轮不再等待新的远端检查完成，下一次按新 head 核对。
+
 <a id="historical-execution"></a>
 
 ## 重写前的执行记录（历史证据）

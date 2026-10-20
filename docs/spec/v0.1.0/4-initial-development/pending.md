@@ -6,6 +6,8 @@
 
 ## 2026-10-20 新授权与当前待办
 
+**2026-10-21 04:38 最新进展：** 真实 S3 跨截止、同进程恢复 / 唯一 closing 与清理已完成，下方物理项据系统证据勾选。b266753 的 CI 产品 236 项通过，浏览器两项默认 5s 等待失败已以 6s 延迟响应复现并修正；本地完整 Chromium 5 项通过，新 head 远端 CI 单独核对。没有重跑模型失败任务或扩大模型预算，Desktop G2 与模型决策 / 审阅条件未变化。
+
 **2026-10-21 04:02 CI 诊断与修正：** 5a3022b 的 PR CI 39463118315 两项验证受慢持久化影响失败，已在同样延迟注入下复现并修正测试边界，产品源码不变；定向 28 项、最终完整 236 项及采集最终 12 项通过，新 head 远端验证另查。没有用旧成功 run 替代当前失败，详情见总 Plan 第二十五批。当前已在休眠授权窗口内，预检通过，其余本地测试进程已结束，可接续一次机器睡眠。
 
 **2026-10-21 00:01 最新检查：** `3be34675fbcfcbb74aaf8c94f0b4be655d207a1d` 的 PR CI 39452974649 已成功，产品 235 项、浏览器 5 项与其余检查通过；完整 head / base / tested SHA 见总 Plan 第二十三批。剩余模型输出决策、集中语义审阅和 Desktop G2 条件未变化，当前不在 02:00–08:00 的物理休眠窗口内。以下 22:50 描述保留为当时恢复记录；不再以 3be3467 CI 未结束作为阻塞。
@@ -22,7 +24,7 @@
 - [x] 模型配置：用户已保存 v2，真实直连流式 read_source 往返 2 次通过；M01-R1.6 / M05-R2.1 完成，七组语义执行和失败定位继续。原填写方法：普通 PowerShell 运行 `& 'E:\JourneyIntoAI\DL_and_LLM\projects\DistillAI\.artifacts\open-acceptance-web.ps1'`，在本地 Web 的“配置 → 模型服务”填写 API 地址、模型名与密钥，参数暂留 `{}`，保存后告知。验收根为 `C:\Users\11954\.distillAI-acceptance`。私有版本由程序写入 `config/<version>.json` 并由 SQLite 选定，不能手工编辑版本文件；不把 key 发到聊天。该命令 Check 已通过；用户实际启动后完成了独立后台验收，当前已按计划 Stop，配置保留。
 - [x] 普通终端独立后台：已完成关闭发起终端后的原 PID / 实例存活、非 Job、MCP 连接退出后仍存活和最终 Stop；配置保留。下文保留原操作要求：上一步从普通 PowerShell 启动 Web 会启动后台。随后关闭发起终端，由 Agent Check 同一实例，再做 MCP 退出 / Check / Stop。当前工具仍属于 Codex / MCP Job 树，不能靠授权把本执行器冒充独立父进程；不放宽 Job、不建系统服务 / 计划任务。
 - [ ] Desktop G2：已获准；本机工具没有原生 Desktop 控制，仍需用户在真实界面安装 / 信任 Personal marketplace 的 DistillAI G2 Probe，并在独立合成聊天触发 compact / 停止 / 归档。具体操作已准备于忽略目录 `.artifacts/initial-development/G2-desktop.md`，插件 C:\Users\11954\plugins\distillai-g2-probe。取得真实事件后由 Agent 继续 M03 / M07 适配，不能把安装批准当触发证据。
-- [ ] 物理休眠：已获准且无需再询问；半小时检查仅在北京时间 02:00–08:00 内准备就绪时触发一次验收，窗口外只准备。2026-10-21 01:03 已准备忽略目录 `probe_physical_sleep.py` / `physical-sleep-acceptance.md`：当前 S3 / 交流供电 / 已启用唤醒定时器核对、绝对唤醒定时器创建 / 立即取消及窗口外拒绝均通过，尚未睡眠。脚本为 32 分钟定时唤醒及恢复 / 清理留余量，只在 02:00–07:15 开始；独立合成根、原 30 分钟截止、一次 closing / 零模型调用及真实电源事件核对，已有 attempt 时不自动重试。硬件能否实际准时唤醒仍需实测，不由 API 预检担保；进程 / 事件循环暂停不充当休眠证据。
+- [x] 物理休眠：2026-10-21 北京时间 04:05:10–04:37:28 完成一次真实 S3，Power-Troubleshooter 记录 79371 的 SleepTime / WakeTime 相差 1937.758s、EffectiveState=4；同 PID 45256 恢复，保留原 04:35:10 截止，DateTrigger 一次 closing / 零模型调用。定时器 / Runtime / 调度器清理、进程退出、合成根删除均在窗口内完成。实际报告与独立系统区间在忽略目录 `physical-sleep-report.json` / `physical-sleep-os-evidence.json`；保留原 attempt，不自动再次睡眠。M03 的 Desktop 事件 / 来源适配仍未过，不据此勾整项 R1.3 或 R2.4；详情见总 Plan 第二十六批。
 - [x] 远端代码验证：已 Push 并创建草稿 [PR #6](https://github.com/Spokey5243/DistillAI/pull/6)。7392422 的 [CI 39445607892](https://github.com/Spokey5243/DistillAI/actions/runs/39445607892) 已通过，tested merge c248be9d2c38c02417b9baaa5b3d1eefb5bce55c，产品 235 / 浏览器 5 及其余检查成功；后续新增 Prompt / 文档提交仍单独核对其 CI。没有 rerun 旧失败 SHA 掩盖问题，未发布 Review 或 Merge。
 
 下方未决选择、缺少远端授权及 blocked 记录仅描述 2026-10-18 当时状态，由本节新授权及执行记录取代。实际模型流式往返、普通终端独立后台与 3be3467 的 PR CI 已通过；剩余真实模型语义 / Desktop / 物理休眠的证据仍不齐，不标整体完成。
